@@ -8,6 +8,10 @@ if [ -z "$ECR_REPO" ]; then
   exit 1
 fi
 
+# 引数からビルドパスを取得（指定がなければデフォルト値を使用）
+BUILD_PATH=${2:-"./cmd/upload/main.go"}
+echo "ビルドするファイル: $BUILD_PATH"
+
 # リージョンを設定
 REGION="ap-northeast-1"
 REPO_NAME="cloudpix-upload"
@@ -19,7 +23,9 @@ aws ecr get-login-password --region $REGION | docker login --username AWS --pass
 
 # イメージをビルド
 echo "Dockerイメージをビルド中..."
-docker buildx build --platform linux/amd64 --provenance=false -t $REPO_NAME:latest .
+docker buildx build --platform linux/amd64 --provenance=false \
+  --build-arg BUILD_PATH=$BUILD_PATH \
+  -t $REPO_NAME:latest .
 
 # ECRリポジトリ用にタグ付け
 docker tag $REPO_NAME:latest $ECR_REPO:latest

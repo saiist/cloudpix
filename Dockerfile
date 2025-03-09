@@ -4,11 +4,15 @@ WORKDIR /cloudpix
 # Copy dependencies list
 COPY go.mod go.sum ./
 
+# BUILD_PATHをARGとして定義（デフォルト値あり）
 ARG BUILD_PATH=./cmd/upload/main.go
 
-# Build with optional lambda.norpc tag
+# Copy source files
 COPY cmd/ ./cmd/
-RUN go build -tags lambda.norpc -o main ./cmd/upload/main.go
+
+# Build with optional lambda.norpc tag
+RUN echo "Building from $BUILD_PATH" && \
+    go build -tags lambda.norpc -o main $BUILD_PATH
 
 # Copy artifacts to a clean image
 FROM public.ecr.aws/lambda/provided:al2023
