@@ -4,6 +4,8 @@ WORKDIR /cloudpix
 # Copy dependencies list
 COPY go.mod go.sum ./
 
+ARG BUILD_PATH=./cmd/upload/main.go
+
 # Build with optional lambda.norpc tag
 COPY cmd/ ./cmd/
 RUN go build -tags lambda.norpc -o main ./cmd/upload/main.go

@@ -14,6 +14,8 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/google/uuid"
 )
@@ -23,6 +25,19 @@ type UploadRequest struct {
 	FileName    string `json:"fileName"`
 	ContentType string `json:"contentType"`
 	Data        string `json:"data,omitempty"` // Base64エンコードされた画像データ
+}
+
+// メタデータ構造体（DynamoDBに保存）
+type ImageMetadata struct {
+	ImageID      string    `json:"ImageID"`
+	FileName     string    `json:"fileName"`
+	ContentType  string    `json:"contentType"`
+	Size         int       `json:"size"`
+	UploadDate   string    `json:"UploadDate"`
+	CreatedAt    time.Time `json:"createdAt"`
+	S3ObjectKey  string    `json:"s3ObjectKey"`
+	S3BucketName string    `json:"s3BucketName"`
+	DownloadURL  string    `json:"downloadUrl"`
 }
 
 // レスポンス構造体
@@ -35,22 +50,27 @@ type UploadResponse struct {
 
 // 環境変数
 var (
-	s3BucketName = os.Getenv("S3_BUCKET_NAME")
-	awsRegion    = os.Getenv("AWS_REGION")
-	s3Client     *s3.S3
+	s3BucketName      = os.Getenv("S3_BUCKET_NAME")
+	dynamoDBTableName = os.Getenv("DYNAMODB_TABLE_NAME")
+	awsRegion         = os.Getenv("AWS_REGION")
+	s3Client          *s3.S3
+	dynamoDBClient    *dynamodb.DynamoDB
 )
 
 func init() {
-	// AWS セッションとS3クライアントの初期化
+	// AWS セッションの初期化
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(awsRegion),
 	})
 	if err != nil {
 		log.Printf("Error creating session: %s", err)
 	}
-	s3Client = s3.New(sess)
 
-	log.Printf("Lambda initialized with bucket: %s", s3BucketName)
+	// クライアントの初期化
+	s3Client = s3.New(sess)
+	dynamoDBClient = dynamodb.New(sess)
+
+	log.Printf("Lambda initialized with bucket: %s, DynamoDB table: %s", s3BucketName, dynamoDBTableName)
 }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -67,12 +87,16 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		}, nil
 	}
 
-	// ユニークなファイル名（Object Key）を生成
+	// ユニークなIDを生成
 	imageID := uuid.New().String()
 	objectKey := fmt.Sprintf("uploads/%s-%s", imageID, uploadReq.FileName)
 	log.Printf("Generated object key: %s", objectKey)
 
-	var uploadResponse UploadResponse
+	var downloadURL string
+	var uploadURL string
+	now := time.Now()
+	todayDate := now.Format("2006-01-02") // YYYY-MM-DD形式
+	var imageSize int
 
 	// Base64エンコードされた画像データがある場合、直接S3にアップロード
 	if uploadReq.Data != "" {
@@ -87,6 +111,8 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 				Body:       fmt.Sprintf(`{"error":"Invalid base64 data: %s"}`, err),
 			}, nil
 		}
+
+		imageSize = len(imageData)
 
 		// S3にアップロード
 		_, err = s3Client.PutObject(&s3.PutObjectInput{
@@ -105,12 +131,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		}
 
 		log.Printf("Successfully uploaded to S3: %s/%s", s3BucketName, objectKey)
-
-		uploadResponse = UploadResponse{
-			ImageID:     imageID,
-			DownloadURL: fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s3BucketName, awsRegion, objectKey),
-			Message:     "Image uploaded successfully",
-		}
+		downloadURL = fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s3BucketName, awsRegion, objectKey)
 	} else {
 		// 直接アップロードされない場合、プレサインドURLを生成して返す
 		log.Printf("Generating presigned URL")
@@ -122,7 +143,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		})
 
 		// 15分間有効なプレサインドURLを生成
-		uploadURL, err := req.Presign(15 * time.Minute)
+		signedURL, err := req.Presign(15 * time.Minute)
 		if err != nil {
 			log.Printf("Error generating presigned URL: %s", err)
 			return events.APIGatewayProxyResponse{
@@ -131,16 +152,71 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			}, nil
 		}
 
-		uploadResponse = UploadResponse{
+		uploadURL = signedURL
+		downloadURL = fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s3BucketName, awsRegion, objectKey)
+
+		// プレサインドURLの場合、サイズは不明
+		imageSize = 0
+	}
+
+	// メタデータをDynamoDBに保存
+	metadata := ImageMetadata{
+		ImageID:      imageID,
+		FileName:     uploadReq.FileName,
+		ContentType:  uploadReq.ContentType,
+		Size:         imageSize,
+		UploadDate:   todayDate,
+		CreatedAt:    now,
+		S3ObjectKey:  objectKey,
+		S3BucketName: s3BucketName,
+		DownloadURL:  downloadURL,
+	}
+
+	// DynamoDBのアイテム形式に変換
+	item, err := dynamodbattribute.MarshalMap(metadata)
+	if err != nil {
+		log.Printf("Error marshalling DynamoDB item: %s", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       fmt.Sprintf(`{"error":"Failed to prepare metadata: %s"}`, err),
+		}, nil
+	}
+
+	// DynamoDBにメタデータを保存
+	_, err = dynamoDBClient.PutItem(&dynamodb.PutItemInput{
+		TableName: aws.String(dynamoDBTableName),
+		Item:      item,
+	})
+
+	if err != nil {
+		log.Printf("Error saving to DynamoDB: %s", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       fmt.Sprintf(`{"error":"Failed to save metadata: %s"}`, err),
+		}, nil
+	}
+
+	log.Printf("Successfully saved metadata to DynamoDB")
+
+	// レスポンスを作成
+	var response UploadResponse
+	if uploadURL != "" {
+		response = UploadResponse{
 			ImageID:     imageID,
 			UploadURL:   uploadURL,
-			DownloadURL: fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s3BucketName, awsRegion, objectKey),
+			DownloadURL: downloadURL,
 			Message:     "Use the uploadUrl to upload your image",
+		}
+	} else {
+		response = UploadResponse{
+			ImageID:     imageID,
+			DownloadURL: downloadURL,
+			Message:     "Image uploaded successfully",
 		}
 	}
 
 	// レスポンスをJSON形式で返す
-	responseJSON, _ := json.Marshal(uploadResponse)
+	responseJSON, _ := json.Marshal(response)
 	log.Printf("Returning response: %s", string(responseJSON))
 
 	return events.APIGatewayProxyResponse{

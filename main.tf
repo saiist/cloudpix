@@ -29,13 +29,55 @@ resource "aws_ecr_repository" "cloudpix_upload" {
   }
 }
 
+# 一覧取得用のECRリポジトリ
+resource "aws_ecr_repository" "cloudpix_list" {
+  name                 = "cloudpix-list"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+################################
+# DynamoDB Table
+################################
+# 画像メタデータ管理用のDynamoDBテーブル
+resource "aws_dynamodb_table" "cloudpix_metadata" {
+  name         = "cloudpix-metadata"
+  billing_mode = "PAY_PER_REQUEST" # オンデマンドキャパシティモード
+  hash_key     = "ImageID"         # パーティションキー
+
+  attribute {
+    name = "ImageID"
+    type = "S"
+  }
+
+  attribute {
+    name = "UploadDate"
+    type = "S"
+  }
+
+  # UploadDateによるクエリ用のGSI
+  global_secondary_index {
+    name            = "UploadDateIndex"
+    hash_key        = "UploadDate"
+    projection_type = "ALL"
+  }
+
+  tags = {
+    Name = "CloudPix-Metadata"
+  }
+}
+
 ################################
 # S3 Bucket
 ################################
 # 画像保存用のS3バケット
 resource "aws_s3_bucket" "cloudpix_images" {
   bucket        = "cloudpix-images-${random_string.bucket_suffix.result}"
-  force_destroy = true  # デモ用：削除時にバケット内のオブジェクトも削除
+  force_destroy = true # デモ用：削除時にバケット内のオブジェクトも削除
 }
 
 # パブリックアクセスブロック設定
@@ -43,16 +85,16 @@ resource "aws_s3_bucket_public_access_block" "cloudpix_images" {
   bucket = aws_s3_bucket.cloudpix_images.id
 
   block_public_acls       = true
-  block_public_policy     = false  # ポリシーによる公開アクセスを許可
+  block_public_policy     = false # ポリシーによる公開アクセスを許可
   ignore_public_acls      = true
-  restrict_public_buckets = false  # パブリックポリシーを持つバケットへのアクセスを許可
+  restrict_public_buckets = false # パブリックポリシーを持つバケットへのアクセスを許可
 }
 
 # S3バケットポリシー - uploads/ フォルダの読み取りを許可
 resource "aws_s3_bucket_policy" "allow_public_read" {
-    # パブリックアクセスブロック設定の後に適用されるように依存関係を明示
+  # パブリックアクセスブロック設定の後に適用されるように依存関係を明示
   depends_on = [aws_s3_bucket_public_access_block.cloudpix_images]
-  
+
   bucket = aws_s3_bucket.cloudpix_images.id
 
   policy = jsonencode({
@@ -64,11 +106,10 @@ resource "aws_s3_bucket_policy" "allow_public_read" {
         Principal = "*"
         Action    = "s3:GetObject"
         Resource  = "${aws_s3_bucket.cloudpix_images.arn}/uploads/*"
-      },
+      }
     ]
   })
 }
-
 
 # CORSの設定
 resource "aws_s3_bucket_cors_configuration" "cloudpix_images" {
@@ -77,7 +118,7 @@ resource "aws_s3_bucket_cors_configuration" "cloudpix_images" {
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
-    allowed_origins = ["*"]  # 本番環境では特定のオリジンに制限すべき
+    allowed_origins = ["*"] # 本番環境では特定のオリジンに制限すべき
     expose_headers  = ["ETag"]
     max_age_seconds = 3000
   }
@@ -125,10 +166,37 @@ resource "aws_iam_policy" "lambda_s3_access" {
           "s3:DeleteObject",
           "s3:ListBucket"
         ]
-        Effect   = "Allow"
+        Effect = "Allow"
         Resource = [
           aws_s3_bucket.cloudpix_images.arn,
           "${aws_s3_bucket.cloudpix_images.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+# Lambda関数にDynamoDBアクセス権限を付与
+resource "aws_iam_policy" "lambda_dynamodb_access" {
+  name        = "lambda-dynamodb-access-policy"
+  description = "Allow Lambda to access DynamoDB table"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan"
+        ]
+        Effect = "Allow"
+        Resource = [
+          aws_dynamodb_table.cloudpix_metadata.arn,
+          "${aws_dynamodb_table.cloudpix_metadata.arn}/index/*"
         ]
       }
     ]
@@ -141,8 +209,14 @@ resource "aws_iam_role_policy_attachment" "lambda_s3" {
   policy_arn = aws_iam_policy.lambda_s3_access.arn
 }
 
+# IAMポリシーをLambdaロールにアタッチ
+resource "aws_iam_role_policy_attachment" "lambda_dynamodb" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = aws_iam_policy.lambda_dynamodb_access.arn
+}
+
 ################################
-# Docker Build & Push
+# Docker Build & Push - Upload Function
 ################################
 # イメージのビルドとプッシュを行うnull_resource
 resource "null_resource" "docker_build_push" {
@@ -163,7 +237,7 @@ resource "null_resource" "docker_build_push" {
 }
 
 ################################
-# Lambda Function
+# Upload Lambda Function
 ################################
 # Lambda関数の作成
 resource "aws_lambda_function" "cloudpix_upload" {
@@ -178,7 +252,8 @@ resource "aws_lambda_function" "cloudpix_upload" {
   # 環境変数を追加
   environment {
     variables = {
-      S3_BUCKET_NAME = aws_s3_bucket.cloudpix_images.bucket
+      S3_BUCKET_NAME      = aws_s3_bucket.cloudpix_images.bucket
+      DYNAMODB_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
     }
   }
 
@@ -188,7 +263,52 @@ resource "aws_lambda_function" "cloudpix_upload" {
 }
 
 ################################
-# API Gateway
+# Docker Build & Push - List Function
+################################
+# イメージのビルドとプッシュを行うnull_resource (list関数用)
+resource "null_resource" "docker_build_push_list" {
+  depends_on = [aws_ecr_repository.cloudpix_list]
+
+  # リポジトリURLが変更された場合、またはDockerfileが変更された場合に再実行
+  triggers = {
+    ecr_repository_url = aws_ecr_repository.cloudpix_list.repository_url
+    dockerfile_hash    = filemd5("${path.module}/Dockerfile")
+    main_go_hash       = filemd5("${path.module}/cmd/list/main.go")
+    build_script_hash  = filemd5("${path.module}/build_and_push.sh")
+  }
+
+  # シェルスクリプトを実行し、ECRリポジトリURLを渡す
+  provisioner "local-exec" {
+    command = "cd ${path.module} && cp cmd/list/main.go cmd/upload/main.go.bak && cp cmd/list/main.go cmd/upload/main.go && chmod +x ${path.module}/build_and_push.sh && ${path.module}/build_and_push.sh ${aws_ecr_repository.cloudpix_list.repository_url} && mv cmd/upload/main.go.bak cmd/upload/main.go"
+  }
+}
+
+################################
+# List Lambda Function
+################################
+# 画像一覧取得用Lambda関数
+resource "aws_lambda_function" "cloudpix_list" {
+  function_name = "cloudpix-list"
+  role          = aws_iam_role.lambda_role.arn
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.cloudpix_list.repository_url}:latest"
+
+  timeout     = 30
+  memory_size = 128
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
+    }
+  }
+
+  depends_on = [
+    null_resource.docker_build_push_list
+  ]
+}
+
+################################
+# API Gateway - Common
 ################################
 # API Gateway
 resource "aws_api_gateway_rest_api" "cloudpix_api" {
@@ -200,6 +320,9 @@ resource "aws_api_gateway_rest_api" "cloudpix_api" {
   }
 }
 
+################################
+# API Gateway - Upload Endpoint
+################################
 # /upload リソースの作成
 resource "aws_api_gateway_resource" "upload" {
   rest_api_id = aws_api_gateway_rest_api.cloudpix_api.id
@@ -236,14 +359,57 @@ resource "aws_lambda_permission" "api_gateway" {
   source_arn = "${aws_api_gateway_rest_api.cloudpix_api.execution_arn}/*/*"
 }
 
+################################
+# API Gateway - List Endpoint
+################################
+# /list リソースの作成
+resource "aws_api_gateway_resource" "list" {
+  rest_api_id = aws_api_gateway_rest_api.cloudpix_api.id
+  parent_id   = aws_api_gateway_rest_api.cloudpix_api.root_resource_id
+  path_part   = "list"
+}
+
+# GET メソッドの設定
+resource "aws_api_gateway_method" "list_get" {
+  rest_api_id   = aws_api_gateway_rest_api.cloudpix_api.id
+  resource_id   = aws_api_gateway_resource.list.id
+  http_method   = "GET"
+  authorization = "NONE"
+}
+
+# Lambda関数との統合
+resource "aws_api_gateway_integration" "list_lambda_integration" {
+  rest_api_id = aws_api_gateway_rest_api.cloudpix_api.id
+  resource_id = aws_api_gateway_resource.list.id
+  http_method = aws_api_gateway_method.list_get.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.cloudpix_list.invoke_arn
+}
+
+# Lambda実行権限の付与
+resource "aws_lambda_permission" "list_api_gateway" {
+  statement_id  = "AllowExecutionFromAPIGatewayForList"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.cloudpix_list.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  source_arn = "${aws_api_gateway_rest_api.cloudpix_api.execution_arn}/*/*"
+}
+
+################################
+# API Gateway - Deployment
+################################
 # APIのデプロイ
 resource "aws_api_gateway_deployment" "cloudpix" {
   depends_on = [
-    aws_api_gateway_integration.lambda_integration
+    aws_api_gateway_integration.lambda_integration,
+    aws_api_gateway_integration.list_lambda_integration
   ]
 
   rest_api_id = aws_api_gateway_rest_api.cloudpix_api.id
-  
+
   lifecycle {
     create_before_destroy = true
   }
@@ -262,7 +428,12 @@ resource "aws_api_gateway_stage" "dev" {
 # 出力値の定義
 output "ecr_repository_url" {
   value       = aws_ecr_repository.cloudpix_upload.repository_url
-  description = "ECRリポジトリのURL"
+  description = "ECRリポジトリのURL（アップロード機能用）"
+}
+
+output "ecr_list_repository_url" {
+  value       = aws_ecr_repository.cloudpix_list.repository_url
+  description = "ECRリポジトリのURL（一覧取得機能用）"
 }
 
 output "s3_bucket_name" {
@@ -270,7 +441,17 @@ output "s3_bucket_name" {
   description = "画像保存用S3バケット名"
 }
 
+output "dynamodb_table_name" {
+  value       = aws_dynamodb_table.cloudpix_metadata.name
+  description = "メタデータ保存用DynamoDBテーブル名"
+}
+
 output "api_url" {
   value       = "${aws_api_gateway_stage.dev.invoke_url}/upload"
   description = "画像アップロードAPIのエンドポイントURL"
+}
+
+output "list_api_url" {
+  value       = "${aws_api_gateway_stage.dev.invoke_url}/list"
+  description = "画像一覧取得APIのエンドポイントURL"
 }

@@ -20,3 +20,13 @@ test:
 	curl -X POST $(API_URL) \
 	  -H "Content-Type: application/json" \
 	  -d "{\"fileName\":\"test.png\",\"contentType\":\"image/png\",\"data\":\"$(shell cat /tmp/test_base64.txt)\"}"
+
+# 画像一覧のテスト
+test-list:
+	$(eval LIST_API_URL := $(shell terraform output -raw list_api_url))
+	curl -X GET $(LIST_API_URL)
+	
+# 特定の日付の画像一覧のテスト
+test-list-date:
+	$(eval LIST_API_URL := $(shell terraform output -raw list_api_url))
+	curl -X GET "$(LIST_API_URL)?date=$(shell date +%Y-%m-%d)"
