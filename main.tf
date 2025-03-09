@@ -1,7 +1,23 @@
+################################
+# Provider Configuration
+################################
 provider "aws" {
   region = "ap-northeast-1"
 }
 
+################################
+# Random Resource
+################################
+# バケットポリシーのためのランダムサフィックス
+resource "random_string" "bucket_suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+################################
+# ECR Repository
+################################
 # ECRリポジトリの作成
 resource "aws_ecr_repository" "cloudpix_upload" {
   name                 = "cloudpix-upload"
@@ -13,24 +29,63 @@ resource "aws_ecr_repository" "cloudpix_upload" {
   }
 }
 
-# イメージのビルドとプッシュを行うnull_resource
-resource "null_resource" "docker_build_push" {
-  depends_on = [aws_ecr_repository.cloudpix_upload]
+################################
+# S3 Bucket
+################################
+# 画像保存用のS3バケット
+resource "aws_s3_bucket" "cloudpix_images" {
+  bucket        = "cloudpix-images-${random_string.bucket_suffix.result}"
+  force_destroy = true  # デモ用：削除時にバケット内のオブジェクトも削除
+}
 
-  # リポジトリURLが変更された場合、またはDockerfileが変更された場合に再実行
-  triggers = {
-    ecr_repository_url = aws_ecr_repository.cloudpix_upload.repository_url
-    dockerfile_hash    = filemd5("${path.module}/Dockerfile")
-    main_go_hash       = filemd5("${path.module}/cmd/upload/main.go")
-    build_script_hash  = filemd5("${path.module}/build_and_push.sh")
-  }
+# パブリックアクセスブロック設定
+resource "aws_s3_bucket_public_access_block" "cloudpix_images" {
+  bucket = aws_s3_bucket.cloudpix_images.id
 
-  # シェルスクリプトを実行し、ECRリポジトリURLを渡す
-  provisioner "local-exec" {
-    command = "chmod +x ${path.module}/build_and_push.sh && ${path.module}/build_and_push.sh ${aws_ecr_repository.cloudpix_upload.repository_url}"
+  block_public_acls       = true
+  block_public_policy     = false  # ポリシーによる公開アクセスを許可
+  ignore_public_acls      = true
+  restrict_public_buckets = false  # パブリックポリシーを持つバケットへのアクセスを許可
+}
+
+# S3バケットポリシー - uploads/ フォルダの読み取りを許可
+resource "aws_s3_bucket_policy" "allow_public_read" {
+    # パブリックアクセスブロック設定の後に適用されるように依存関係を明示
+  depends_on = [aws_s3_bucket_public_access_block.cloudpix_images]
+  
+  bucket = aws_s3_bucket.cloudpix_images.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadForUploads"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.cloudpix_images.arn}/uploads/*"
+      },
+    ]
+  })
+}
+
+
+# CORSの設定
+resource "aws_s3_bucket_cors_configuration" "cloudpix_images" {
+  bucket = aws_s3_bucket.cloudpix_images.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
+    allowed_origins = ["*"]  # 本番環境では特定のオリジンに制限すべき
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
   }
 }
 
+################################
+# IAM Configuration
+################################
 # Lambda実行用のIAMロール
 resource "aws_iam_role" "lambda_role" {
   name = "lambda-cloudpix-role"
@@ -55,6 +110,61 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# Lambda関数にS3アクセス権限を付与
+resource "aws_iam_policy" "lambda_s3_access" {
+  name        = "lambda-s3-access-policy"
+  description = "Allow Lambda to access S3 bucket"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Effect   = "Allow"
+        Resource = [
+          aws_s3_bucket.cloudpix_images.arn,
+          "${aws_s3_bucket.cloudpix_images.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+# IAMポリシーをLambdaロールにアタッチ
+resource "aws_iam_role_policy_attachment" "lambda_s3" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = aws_iam_policy.lambda_s3_access.arn
+}
+
+################################
+# Docker Build & Push
+################################
+# イメージのビルドとプッシュを行うnull_resource
+resource "null_resource" "docker_build_push" {
+  depends_on = [aws_ecr_repository.cloudpix_upload]
+
+  # リポジトリURLが変更された場合、またはDockerfileが変更された場合に再実行
+  triggers = {
+    ecr_repository_url = aws_ecr_repository.cloudpix_upload.repository_url
+    dockerfile_hash    = filemd5("${path.module}/Dockerfile")
+    main_go_hash       = filemd5("${path.module}/cmd/upload/main.go")
+    build_script_hash  = filemd5("${path.module}/build_and_push.sh")
+  }
+
+  # シェルスクリプトを実行し、ECRリポジトリURLを渡す
+  provisioner "local-exec" {
+    command = "chmod +x ${path.module}/build_and_push.sh && ${path.module}/build_and_push.sh ${aws_ecr_repository.cloudpix_upload.repository_url}"
+  }
+}
+
+################################
+# Lambda Function
+################################
 # Lambda関数の作成
 resource "aws_lambda_function" "cloudpix_upload" {
   function_name = "cloudpix-upload"
@@ -65,11 +175,21 @@ resource "aws_lambda_function" "cloudpix_upload" {
   timeout     = 30
   memory_size = 128
 
+  # 環境変数を追加
+  environment {
+    variables = {
+      S3_BUCKET_NAME = aws_s3_bucket.cloudpix_images.bucket
+    }
+  }
+
   depends_on = [
     null_resource.docker_build_push
   ]
 }
 
+################################
+# API Gateway
+################################
 # API Gateway
 resource "aws_api_gateway_rest_api" "cloudpix_api" {
   name        = "CloudPix-API"
@@ -136,11 +256,21 @@ resource "aws_api_gateway_stage" "dev" {
   stage_name    = "dev"
 }
 
+################################
+# Outputs
+################################
 # 出力値の定義
 output "ecr_repository_url" {
-  value = aws_ecr_repository.cloudpix_upload.repository_url
+  value       = aws_ecr_repository.cloudpix_upload.repository_url
+  description = "ECRリポジトリのURL"
+}
+
+output "s3_bucket_name" {
+  value       = aws_s3_bucket.cloudpix_images.bucket
+  description = "画像保存用S3バケット名"
 }
 
 output "api_url" {
-  value = "${aws_api_gateway_stage.dev.invoke_url}/upload"
+  value       = "${aws_api_gateway_stage.dev.invoke_url}/upload"
+  description = "画像アップロードAPIのエンドポイントURL"
 }
