@@ -1,0 +1,32 @@
+################################
+# Outputs
+################################
+output "ecr_repository_url" {
+  value       = aws_ecr_repository.cloudpix_upload.repository_url
+  description = "ECRリポジトリのURL（アップロード機能用）"
+}
+
+output "ecr_list_repository_url" {
+  value       = aws_ecr_repository.cloudpix_list.repository_url
+  description = "ECRリポジトリのURL（一覧取得機能用）"
+}
+
+output "s3_bucket_name" {
+  value       = aws_s3_bucket.cloudpix_images.bucket
+  description = "画像保存用S3バケット名"
+}
+
+output "dynamodb_table_name" {
+  value       = aws_dynamodb_table.cloudpix_metadata.name
+  description = "メタデータ保存用DynamoDBテーブル名"
+}
+
+output "api_url" {
+  value       = "${aws_api_gateway_stage.dev.invoke_url}/upload"
+  description = "画像アップロードAPIのエンドポイントURL"
+}
+
+output "list_api_url" {
+  value       = "${aws_api_gateway_stage.dev.invoke_url}/list"
+  description = "画像一覧取得APIのエンドポイントURL"
+}

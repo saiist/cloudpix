@@ -1,11 +1,4 @@
 ################################
-# Provider Configuration
-################################
-provider "aws" {
-  region = "ap-northeast-1"
-}
-
-################################
 # Random Resource
 ################################
 # バケットポリシーのためのランダムサフィックス
@@ -20,7 +13,7 @@ resource "random_string" "bucket_suffix" {
 ################################
 # ECRリポジトリの作成
 resource "aws_ecr_repository" "cloudpix_upload" {
-  name                 = "cloudpix-upload"
+  name                 = "${var.app_name}-upload"
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 
@@ -31,7 +24,7 @@ resource "aws_ecr_repository" "cloudpix_upload" {
 
 # 一覧取得用のECRリポジトリ
 resource "aws_ecr_repository" "cloudpix_list" {
-  name                 = "cloudpix-list"
+  name                 = "${var.app_name}-list"
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 
@@ -45,7 +38,7 @@ resource "aws_ecr_repository" "cloudpix_list" {
 ################################
 # 画像メタデータ管理用のDynamoDBテーブル
 resource "aws_dynamodb_table" "cloudpix_metadata" {
-  name         = "cloudpix-metadata"
+  name         = "${var.app_name}-metadata"
   billing_mode = "PAY_PER_REQUEST" # オンデマンドキャパシティモード
   hash_key     = "ImageID"         # パーティションキー
 
@@ -67,7 +60,8 @@ resource "aws_dynamodb_table" "cloudpix_metadata" {
   }
 
   tags = {
-    Name = "CloudPix-Metadata"
+    Name        = "${var.app_name}-Metadata"
+    Environment = var.environment
   }
 }
 
@@ -76,8 +70,13 @@ resource "aws_dynamodb_table" "cloudpix_metadata" {
 ################################
 # 画像保存用のS3バケット
 resource "aws_s3_bucket" "cloudpix_images" {
-  bucket        = "cloudpix-images-${random_string.bucket_suffix.result}"
+  bucket        = "${var.app_name}-images-${random_string.bucket_suffix.result}"
   force_destroy = true # デモ用：削除時にバケット内のオブジェクトも削除
+  
+  tags = {
+    Name        = "${var.app_name}-Images"
+    Environment = var.environment
+  }
 }
 
 # パブリックアクセスブロック設定
@@ -129,7 +128,7 @@ resource "aws_s3_bucket_cors_configuration" "cloudpix_images" {
 ################################
 # Lambda実行用のIAMロール
 resource "aws_iam_role" "lambda_role" {
-  name = "lambda-cloudpix-role"
+  name = "lambda-${var.app_name}-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -241,13 +240,13 @@ resource "null_resource" "docker_build_push" {
 ################################
 # Lambda関数の作成
 resource "aws_lambda_function" "cloudpix_upload" {
-  function_name = "cloudpix-upload"
+  function_name = "${var.app_name}-upload"
   role          = aws_iam_role.lambda_role.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.cloudpix_upload.repository_url}:latest"
 
-  timeout     = 30
-  memory_size = 128
+  timeout     = var.lambda_timeout
+  memory_size = var.lambda_memory_size
 
   # 環境変数を追加
   environment {
@@ -288,13 +287,13 @@ resource "null_resource" "docker_build_push_list" {
 ################################
 # 画像一覧取得用Lambda関数
 resource "aws_lambda_function" "cloudpix_list" {
-  function_name = "cloudpix-list"
+  function_name = "${var.app_name}-list"
   role          = aws_iam_role.lambda_role.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.cloudpix_list.repository_url}:latest"
 
-  timeout     = 30
-  memory_size = 128
+  timeout     = var.lambda_timeout
+  memory_size = var.lambda_memory_size
 
   environment {
     variables = {
@@ -312,8 +311,8 @@ resource "aws_lambda_function" "cloudpix_list" {
 ################################
 # API Gateway
 resource "aws_api_gateway_rest_api" "cloudpix_api" {
-  name        = "CloudPix-API"
-  description = "CloudPix API Gateway"
+  name        = "${title(var.app_name)}-API"
+  description = "${title(var.app_name)} API Gateway"
 
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -419,39 +418,5 @@ resource "aws_api_gateway_deployment" "cloudpix" {
 resource "aws_api_gateway_stage" "dev" {
   deployment_id = aws_api_gateway_deployment.cloudpix.id
   rest_api_id   = aws_api_gateway_rest_api.cloudpix_api.id
-  stage_name    = "dev"
-}
-
-################################
-# Outputs
-################################
-# 出力値の定義
-output "ecr_repository_url" {
-  value       = aws_ecr_repository.cloudpix_upload.repository_url
-  description = "ECRリポジトリのURL（アップロード機能用）"
-}
-
-output "ecr_list_repository_url" {
-  value       = aws_ecr_repository.cloudpix_list.repository_url
-  description = "ECRリポジトリのURL（一覧取得機能用）"
-}
-
-output "s3_bucket_name" {
-  value       = aws_s3_bucket.cloudpix_images.bucket
-  description = "画像保存用S3バケット名"
-}
-
-output "dynamodb_table_name" {
-  value       = aws_dynamodb_table.cloudpix_metadata.name
-  description = "メタデータ保存用DynamoDBテーブル名"
-}
-
-output "api_url" {
-  value       = "${aws_api_gateway_stage.dev.invoke_url}/upload"
-  description = "画像アップロードAPIのエンドポイントURL"
-}
-
-output "list_api_url" {
-  value       = "${aws_api_gateway_stage.dev.invoke_url}/list"
-  description = "画像一覧取得APIのエンドポイントURL"
+  stage_name    = var.environment
 }
