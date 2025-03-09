@@ -14,7 +14,8 @@ echo "ビルドするファイル: $BUILD_PATH"
 
 # リージョンを設定
 REGION="ap-northeast-1"
-REPO_NAME="cloudpix-upload"
+# カスタムリポジトリ名が指定されていなければデフォルト値を使用
+REPO_NAME=${REPO_NAME:-"cloudpix-upload"}
 
 echo "ECR Repository: $ECR_REPO"
 

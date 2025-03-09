@@ -15,7 +15,11 @@ resource "null_resource" "docker_build_push_upload" {
 
   # シェルスクリプトを実行し、ECRリポジトリURLとビルドパスを渡す
   provisioner "local-exec" {
-    command = "chmod +x ${path.module}/build_and_push.sh && ${path.module}/build_and_push.sh ${aws_ecr_repository.cloudpix_upload.repository_url} ./cmd/upload/main.go"
+    command = <<-EOT
+      echo "Building upload function image..."
+      chmod +x ${path.module}/build_and_push.sh 
+      REPO_NAME="cloudpix-upload" ${path.module}/build_and_push.sh ${aws_ecr_repository.cloudpix_upload.repository_url} ./cmd/upload/main.go
+    EOT
   }
 }
 
@@ -33,7 +37,11 @@ resource "null_resource" "docker_build_push_list" {
 
   # シェルスクリプトを実行し、ECRリポジトリURLとビルドパスを渡す
   provisioner "local-exec" {
-    command = "chmod +x ${path.module}/build_and_push.sh && ${path.module}/build_and_push.sh ${aws_ecr_repository.cloudpix_list.repository_url} ./cmd/list/main.go"
+    command = <<-EOT
+      echo "Building list function image..."
+      chmod +x ${path.module}/build_and_push.sh
+      REPO_NAME="cloudpix-list" ${path.module}/build_and_push.sh ${aws_ecr_repository.cloudpix_list.repository_url} ./cmd/list/main.go
+    EOT
   }
 }
 
