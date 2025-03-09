@@ -1,0 +1,66 @@
+# Terraform関連
+# ローカル .terraform ディレクトリ
+.terraform/
+
+# .tfstate ファイル
+*.tfstate
+*.tfstate.*
+
+# クラッシュログファイル
+crash.log
+crash.*.log
+
+# 機密情報を含む可能性のあるファイルを除外
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI設定ファイル
+.terraformrc
+terraform.rc
+
+# Golang関連
+# バイナリファイル
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# テストバイナリ
+*.test
+
+# カバレッジツールの出力
+*.out
+*.prof
+
+# 依存関係ディレクトリ (古いGoバージョン用)
+/vendor/
+
+# Go Modulesキャッシュ
+/go.sum
+
+# コンパイル済みオブジェクトファイル
+*.o
+*.a
+
+# デバッグファイル
+debug
+
+# ローカル環境設定
+.env
+.env.local
+
+# エディタ・IDE関連
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OSの自動生成ファイル
+.DS_Store
+Thumbs.db
