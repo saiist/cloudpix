@@ -9,63 +9,6 @@ resource "random_string" "bucket_suffix" {
 }
 
 ################################
-# ECR Repository
-################################
-# ECRリポジトリの作成
-resource "aws_ecr_repository" "cloudpix_upload" {
-  name                 = "${var.app_name}-upload"
-  image_tag_mutability = "MUTABLE"
-  force_delete         = true
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-}
-
-# 一覧取得用のECRリポジトリ
-resource "aws_ecr_repository" "cloudpix_list" {
-  name                 = "${var.app_name}-list"
-  image_tag_mutability = "MUTABLE"
-  force_delete         = true
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-}
-
-################################
-# DynamoDB Table
-################################
-# 画像メタデータ管理用のDynamoDBテーブル
-resource "aws_dynamodb_table" "cloudpix_metadata" {
-  name         = "${var.app_name}-metadata"
-  billing_mode = "PAY_PER_REQUEST" # オンデマンドキャパシティモード
-  hash_key     = "ImageID"         # パーティションキー
-
-  attribute {
-    name = "ImageID"
-    type = "S"
-  }
-
-  attribute {
-    name = "UploadDate"
-    type = "S"
-  }
-
-  # UploadDateによるクエリ用のGSI
-  global_secondary_index {
-    name            = "UploadDateIndex"
-    hash_key        = "UploadDate"
-    projection_type = "ALL"
-  }
-
-  tags = {
-    Name        = "${var.app_name}-Metadata"
-    Environment = var.environment
-  }
-}
-
-################################
 # S3 Bucket
 ################################
 # 画像保存用のS3バケット
