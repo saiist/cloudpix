@@ -30,3 +30,8 @@ output "list_api_url" {
   value       = "${aws_api_gateway_stage.dev.invoke_url}/list"
   description = "画像一覧取得APIのエンドポイントURL"
 }
+
+output "ecr_thumbnail_repository_url" {
+  value       = aws_ecr_repository.cloudpix_thumbnail.repository_url
+  description = "ECRリポジトリのURL（サムネイル生成機能用）"
+}

@@ -29,6 +29,14 @@ update-list-code:
 	  --function-name cloudpix-list \
 	  --image-uri $(ECR_REPO):latest
 
+# サムネイル生成コードの更新
+update-thumbnail-code:
+	$(eval ECR_REPO := $(call tf_output,ecr_thumbnail_repository_url))
+	./build_and_push.sh $(ECR_REPO) ./cmd/thumbnail/main.go
+	aws lambda update-function-code \
+	  --function-name cloudpix-thumbnail \
+	  --image-uri $(ECR_REPO):latest
+
 # APIのテスト (Base64形式での画像アップロード)
 test:
 	$(eval API_URL := $(call tf_output,api_url))
