@@ -8,17 +8,18 @@ resource "null_resource" "docker_build_push_upload" {
   # リポジトリURLが変更された場合、またはDockerfileが変更された場合に再実行
   triggers = {
     ecr_repository_url = aws_ecr_repository.cloudpix_upload.repository_url
-    dockerfile_hash    = filemd5("${path.module}/Dockerfile")
-    main_go_hash       = filemd5("${path.module}/cmd/upload/main.go")
-    build_script_hash  = filemd5("${path.module}/build_and_push.sh")
+    dockerfile_hash    = filemd5("${path.module}/../Dockerfile")
+    main_go_hash       = filemd5("${path.module}/../cmd/upload/main.go")
+    build_script_hash  = filemd5("${path.module}/../build_and_push.sh")
   }
 
   # シェルスクリプトを実行し、ECRリポジトリURLとビルドパスを渡す
   provisioner "local-exec" {
     command = <<-EOT
       echo "Building upload function image..."
-      chmod +x ${path.module}/build_and_push.sh 
-      REPO_NAME="cloudpix-upload" ${path.module}/build_and_push.sh ${aws_ecr_repository.cloudpix_upload.repository_url} ./cmd/upload/main.go
+      cd ${path.module}/.. && \
+      chmod +x build_and_push.sh && \
+      REPO_NAME="cloudpix-upload" ./build_and_push.sh ${aws_ecr_repository.cloudpix_upload.repository_url} ./cmd/upload/main.go
     EOT
   }
 }
@@ -30,17 +31,18 @@ resource "null_resource" "docker_build_push_list" {
   # リポジトリURLが変更された場合、またはDockerfileが変更された場合に再実行
   triggers = {
     ecr_repository_url = aws_ecr_repository.cloudpix_list.repository_url
-    dockerfile_hash    = filemd5("${path.module}/Dockerfile")
-    main_go_hash       = filemd5("${path.module}/cmd/list/main.go")
-    build_script_hash  = filemd5("${path.module}/build_and_push.sh")
+    dockerfile_hash    = filemd5("${path.module}/../Dockerfile")
+    main_go_hash       = filemd5("${path.module}/../cmd/list/main.go")
+    build_script_hash  = filemd5("${path.module}/../build_and_push.sh")
   }
 
   # シェルスクリプトを実行し、ECRリポジトリURLとビルドパスを渡す
   provisioner "local-exec" {
     command = <<-EOT
       echo "Building list function image..."
-      chmod +x ${path.module}/build_and_push.sh
-      REPO_NAME="cloudpix-list" ${path.module}/build_and_push.sh ${aws_ecr_repository.cloudpix_list.repository_url} ./cmd/list/main.go
+      cd ${path.module}/.. && \
+      chmod +x build_and_push.sh && \
+      REPO_NAME="cloudpix-list" ./build_and_push.sh ${aws_ecr_repository.cloudpix_list.repository_url} ./cmd/list/main.go
     EOT
   }
 }

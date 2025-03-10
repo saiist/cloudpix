@@ -15,7 +15,7 @@ resource "random_string" "bucket_suffix" {
 resource "aws_s3_bucket" "cloudpix_images" {
   bucket        = "${var.app_name}-images-${random_string.bucket_suffix.result}"
   force_destroy = true # デモ用：削除時にバケット内のオブジェクトも削除
-  
+
   tags = {
     Name        = "${var.app_name}-Images"
     Environment = var.environment
