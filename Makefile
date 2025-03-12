@@ -37,8 +37,16 @@ update-thumbnail-code:
 	  --function-name cloudpix-thumbnail \
 	  --image-uri $(ECR_REPO):latest
 
+# タグ機能のコード更新
+update-tags-code:
+	$(eval ECR_REPO := $(call tf_output,ecr_tags_repository_url))
+	./build_and_push.sh $(ECR_REPO) ./cmd/tags/main.go
+	aws lambda update-function-code \
+	  --function-name cloudpix-tags \
+	  --image-uri $(ECR_REPO):latest
+
 # APIのテスト (Base64形式での画像アップロード)
-test:
+test-upload:
 	$(eval API_URL := $(call tf_output,api_url))
 	# サンプルの小さなPNG画像をBase64エンコードしてアップロード
 	echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" > /tmp/test_base64.txt
@@ -55,6 +63,39 @@ test-list:
 test-list-date:
 	$(eval LIST_API_URL := $(call tf_output,list_api_url))
 	curl -X GET "$(LIST_API_URL)?date=$(shell date +%Y-%m-%d)"
+
+
+# ヘルパー関数 - 最初の画像IDを取得
+define get_first_image_id
+$(shell curl -s $(call tf_output,list_api_url) | jq -r '.images[0].imageId')
+endef
+
+# タグ追加のテスト
+test-add-tags:
+	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
+	$(eval IMAGE_ID := $(call get_first_image_id))
+	@echo "Adding tags to image ID: $(IMAGE_ID)"
+	curl -X POST $(TAGS_API_URL) \
+	  -H "Content-Type: application/json" \
+	  -d "{\"imageId\":\"$(IMAGE_ID)\",\"tags\":[\"nature\",\"landscape\",\"vacation\"]}"
+
+# 画像のタグ取得テスト
+test-get-image-tags:
+	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
+	$(eval IMAGE_ID := $(call get_first_image_id))
+	@echo "Getting tags for image ID: $(IMAGE_ID)"
+	curl -X GET $(TAGS_API_URL)/$(IMAGE_ID)
+
+# すべてのタグのリスト取得テスト
+test-list-tags:
+	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
+	curl -X GET $(TAGS_API_URL)
+
+# タグによる画像検索テスト
+test-search-by-tag:
+	$(eval LIST_API_URL := $(call tf_output,list_api_url))
+	@echo "Enter tag to search for: " && read TAG && \
+	curl -X GET "$(LIST_API_URL)?tag=$${TAG}"
 
 # Terraformの初期化
 tf-init:

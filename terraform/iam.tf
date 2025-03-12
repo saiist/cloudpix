@@ -77,14 +77,45 @@ resource "aws_iam_policy" "lambda_dynamodb_access" {
   })
 }
 
+# Lambda関数にタグテーブルへのアクセス権限を付与
+resource "aws_iam_policy" "lambda_tags_access" {
+  name        = "lambda-tags-access-policy"
+  description = "Allow Lambda to access Tags DynamoDB table"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan"
+        ]
+        Effect = "Allow"
+        Resource = [
+          aws_dynamodb_table.cloudpix_tags.arn,
+          "${aws_dynamodb_table.cloudpix_tags.arn}/index/*"
+        ]
+      }
+    ]
+  })
+}
+
 # IAMポリシーをLambdaロールにアタッチ
 resource "aws_iam_role_policy_attachment" "lambda_s3" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = aws_iam_policy.lambda_s3_access.arn
 }
 
-# IAMポリシーをLambdaロールにアタッチ
 resource "aws_iam_role_policy_attachment" "lambda_dynamodb" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = aws_iam_policy.lambda_dynamodb_access.arn
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_tags" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = aws_iam_policy.lambda_tags_access.arn
 }
