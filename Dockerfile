@@ -10,6 +10,7 @@ ARG BUILD_PATH=./cmd/upload/main.go
 # Copy source files
 COPY cmd/ ./cmd/
 COPY config/ ./config/
+COPY internal/ ./internal/
 
 # Build with optional lambda.norpc tag
 RUN echo "Building from $BUILD_PATH" && \
