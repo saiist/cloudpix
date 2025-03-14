@@ -2,12 +2,12 @@ package main
 
 import (
 	"bytes"
+	"cloudpix/config"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -48,19 +48,16 @@ type UploadResponse struct {
 	Message     string `json:"message"`
 }
 
-// 環境変数
 var (
-	s3BucketName      = os.Getenv("S3_BUCKET_NAME")
-	dynamoDBTableName = os.Getenv("DYNAMODB_TABLE_NAME")
-	awsRegion         = os.Getenv("AWS_REGION")
-	s3Client          *s3.S3
-	dynamoDBClient    *dynamodb.DynamoDB
+	cfg            = config.NewConfig()
+	s3Client       *s3.S3
+	dynamoDBClient *dynamodb.DynamoDB
 )
 
 func init() {
 	// AWS セッションの初期化
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(awsRegion),
+		Region: aws.String(cfg.AWSRegion),
 	})
 	if err != nil {
 		log.Printf("Error creating session: %s", err)
@@ -70,7 +67,7 @@ func init() {
 	s3Client = s3.New(sess)
 	dynamoDBClient = dynamodb.New(sess)
 
-	log.Printf("Lambda initialized with bucket: %s, DynamoDB table: %s", s3BucketName, dynamoDBTableName)
+	log.Printf("Lambda initialized with bucket: %s, DynamoDB table: %s", cfg.S3BucketName, cfg.DynamoDBTableName)
 }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -116,7 +113,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 
 		// S3にアップロード
 		_, err = s3Client.PutObject(&s3.PutObjectInput{
-			Bucket:      aws.String(s3BucketName),
+			Bucket:      aws.String(cfg.S3BucketName),
 			Key:         aws.String(objectKey),
 			Body:        bytes.NewReader(imageData),
 			ContentType: aws.String(uploadReq.ContentType),
@@ -130,14 +127,14 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			}, nil
 		}
 
-		log.Printf("Successfully uploaded to S3: %s/%s", s3BucketName, objectKey)
-		downloadURL = fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s3BucketName, awsRegion, objectKey)
+		log.Printf("Successfully uploaded to S3: %s/%s", cfg.S3BucketName, objectKey)
+		downloadURL = fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.S3BucketName, cfg.AWSRegion, objectKey)
 	} else {
 		// 直接アップロードされない場合、プレサインドURLを生成して返す
 		log.Printf("Generating presigned URL")
 
 		req, _ := s3Client.PutObjectRequest(&s3.PutObjectInput{
-			Bucket:      aws.String(s3BucketName),
+			Bucket:      aws.String(cfg.S3BucketName),
 			Key:         aws.String(objectKey),
 			ContentType: aws.String(uploadReq.ContentType),
 		})
@@ -153,7 +150,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		}
 
 		uploadURL = signedURL
-		downloadURL = fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s3BucketName, awsRegion, objectKey)
+		downloadURL = fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.S3BucketName, cfg.AWSRegion, objectKey)
 
 		// プレサインドURLの場合、サイズは不明
 		imageSize = 0
@@ -168,7 +165,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		UploadDate:   todayDate,
 		CreatedAt:    now,
 		S3ObjectKey:  objectKey,
-		S3BucketName: s3BucketName,
+		S3BucketName: cfg.S3BucketName,
 		DownloadURL:  downloadURL,
 	}
 
@@ -184,7 +181,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 
 	// DynamoDBにメタデータを保存
 	_, err = dynamoDBClient.PutItem(&dynamodb.PutItemInput{
-		TableName: aws.String(dynamoDBTableName),
+		TableName: aws.String(cfg.DynamoDBTableName),
 		Item:      item,
 	})
 

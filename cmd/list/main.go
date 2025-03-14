@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
+
+	"cloudpix/config"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -35,15 +36,15 @@ type ListResponse struct {
 
 // 環境変数
 var (
-	dynamoDBTableName = os.Getenv("DYNAMODB_TABLE_NAME")
-	awsRegion         = os.Getenv("AWS_REGION")
-	dynamoDBClient    *dynamodb.DynamoDB
+	cfg            = config.NewConfig()
+	dynamoDBClient *dynamodb.DynamoDB
 )
 
 func init() {
+
 	// AWS セッションの初期化
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(awsRegion),
+		Region: aws.String(cfg.AWSRegion),
 	})
 	if err != nil {
 		log.Printf("Error creating session: %s", err)
@@ -52,7 +53,7 @@ func init() {
 	// DynamoDBクライアントの初期化
 	dynamoDBClient = dynamodb.New(sess)
 
-	log.Printf("Lambda initialized with DynamoDB table: %s", dynamoDBTableName)
+	log.Printf("Lambda initialized with DynamoDB table: %s", cfg.DynamoDBTableName)
 }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -82,7 +83,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 
 		// DynamoDBをクエリ
 		result, err = dynamoDBClient.Scan(&dynamodb.ScanInput{
-			TableName:                 aws.String(dynamoDBTableName),
+			TableName:                 aws.String(cfg.DynamoDBTableName),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
 			FilterExpression:          expr.Filter(),
@@ -90,7 +91,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	} else {
 		// フィルターなしで全件取得
 		result, err = dynamoDBClient.Scan(&dynamodb.ScanInput{
-			TableName: aws.String(dynamoDBTableName),
+			TableName: aws.String(cfg.DynamoDBTableName),
 		})
 	}
 

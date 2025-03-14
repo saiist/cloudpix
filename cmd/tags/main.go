@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strings"
+
+	"cloudpix/config"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -17,9 +18,7 @@ import (
 
 // 環境変数
 var (
-	tagsTableName  = os.Getenv("TAGS_TABLE_NAME")
-	metaTableName  = os.Getenv("METADATA_TABLE_NAME")
-	awsRegion      = os.Getenv("AWS_REGION")
+	cfg            = config.NewConfig()
 	dynamoDBClient *dynamodb.DynamoDB
 )
 
@@ -51,7 +50,7 @@ type TagsResponse struct {
 func init() {
 	// AWS セッションの初期化
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(awsRegion),
+		Region: aws.String(cfg.AWSRegion),
 	})
 	if err != nil {
 		log.Printf("Error creating AWS session: %s", err)
@@ -60,7 +59,7 @@ func init() {
 	// DynamoDBクライアントの初期化
 	dynamoDBClient = dynamodb.New(sess)
 
-	log.Printf("Tags Lambda initialized with tables: Tags=%s, Metadata=%s", tagsTableName, metaTableName)
+	log.Printf("Tags Lambda initialized with tables: Tags=%s, Metadata=%s", cfg.TagsTableName, cfg.MetaTableName)
 }
 
 // ハンドラー関数
@@ -97,7 +96,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 func listTags(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	// タグの一覧を取得（重複なし）
 	result, err := dynamoDBClient.Scan(&dynamodb.ScanInput{
-		TableName:            aws.String(tagsTableName),
+		TableName:            aws.String(cfg.TagsTableName),
 		ProjectionExpression: aws.String("TagName"),
 	})
 
@@ -146,7 +145,7 @@ func getImageTags(request events.APIGatewayProxyRequest) (events.APIGatewayProxy
 
 	// 指定された画像IDのタグを検索
 	result, err := dynamoDBClient.Query(&dynamodb.QueryInput{
-		TableName:              aws.String(tagsTableName),
+		TableName:              aws.String(cfg.TagsTableName),
 		IndexName:              aws.String("ImageIDIndex"),
 		KeyConditionExpression: aws.String("ImageID = :imageId"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
@@ -203,7 +202,7 @@ func addTags(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 
 	// 画像IDの存在確認
 	_, err = dynamoDBClient.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String(metaTableName),
+		TableName: aws.String(cfg.MetaTableName),
 		Key: map[string]*dynamodb.AttributeValue{
 			"ImageID": {
 				S: aws.String(tagRequest.ImageID),
@@ -230,7 +229,7 @@ func addTags(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 
 		// タグをDynamoDBに追加
 		_, err := dynamoDBClient.PutItem(&dynamodb.PutItemInput{
-			TableName: aws.String(tagsTableName),
+			TableName: aws.String(cfg.TagsTableName),
 			Item: map[string]*dynamodb.AttributeValue{
 				"TagName": {
 					S: aws.String(tag),
@@ -293,7 +292,7 @@ func removeTags(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRe
 
 		// タグをDynamoDBから削除
 		_, err := dynamoDBClient.DeleteItem(&dynamodb.DeleteItemInput{
-			TableName: aws.String(tagsTableName),
+			TableName: aws.String(cfg.TagsTableName),
 			Key: map[string]*dynamodb.AttributeValue{
 				"TagName": {
 					S: aws.String(tag),
@@ -326,7 +325,7 @@ func removeTags(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRe
 func removeAllTags(imageID string) (events.APIGatewayProxyResponse, error) {
 	// 画像のすべてのタグを検索
 	result, err := dynamoDBClient.Query(&dynamodb.QueryInput{
-		TableName:              aws.String(tagsTableName),
+		TableName:              aws.String(cfg.TagsTableName),
 		IndexName:              aws.String("ImageIDIndex"),
 		KeyConditionExpression: aws.String("ImageID = :imageId"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
@@ -350,7 +349,7 @@ func removeAllTags(imageID string) (events.APIGatewayProxyResponse, error) {
 		tagName := item["TagName"].S
 
 		_, err := dynamoDBClient.DeleteItem(&dynamodb.DeleteItemInput{
-			TableName: aws.String(tagsTableName),
+			TableName: aws.String(cfg.TagsTableName),
 			Key: map[string]*dynamodb.AttributeValue{
 				"TagName": {
 					S: tagName,

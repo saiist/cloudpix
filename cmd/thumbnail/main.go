@@ -2,13 +2,13 @@ package main
 
 import (
 	"bytes"
+	"cloudpix/config"
 	"context"
 	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -21,14 +21,11 @@ import (
 	"github.com/disintegration/imaging"
 )
 
-// 環境変数
 var (
-	thumbnailSize     = 200                              // サムネイルのサイズ（ピクセル）
-	s3BucketName      = os.Getenv("S3_BUCKET_NAME")      // S3バケット名
-	dynamoDBTableName = os.Getenv("DYNAMODB_TABLE_NAME") // DynamoDBテーブル名
-	awsRegion         = os.Getenv("AWS_REGION")          // AWSリージョン
-	s3Client          *s3.S3                             // S3クライアント
-	dynamoDBClient    *dynamodb.DynamoDB                 // DynamoDBクライアント
+	cfg            = config.NewConfig()
+	thumbnailSize  = 200              // サムネイルのサイズ（ピクセル）
+	s3Client       *s3.S3             // S3クライアント
+	dynamoDBClient *dynamodb.DynamoDB // DynamoDBクライアント
 )
 
 // サムネイル情報構造体
@@ -44,7 +41,7 @@ type ThumbnailInfo struct {
 func init() {
 	// AWS セッションの初期化
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(awsRegion),
+		Region: aws.String(cfg.AWSRegion),
 	})
 	if err != nil {
 		log.Printf("Error creating AWS session: %s", err)
@@ -54,7 +51,7 @@ func init() {
 	s3Client = s3.New(sess)
 	dynamoDBClient = dynamodb.New(sess)
 
-	log.Printf("Thumbnail Lambda initialized with bucket: %s, thumbnail size: %d", s3BucketName, thumbnailSize)
+	log.Printf("Thumbnail Lambda initialized with bucket: %s, thumbnail size: %d", cfg.S3BucketName, thumbnailSize)
 }
 
 func handler(ctx context.Context, s3Event events.S3Event) error {
@@ -150,7 +147,7 @@ func handler(ctx context.Context, s3Event events.S3Event) error {
 		thumbnailInfo := ThumbnailInfo{
 			ImageID:      imageID,
 			ThumbnailKey: thumbnailKey,
-			ThumbnailURL: fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucket, awsRegion, thumbnailKey),
+			ThumbnailURL: fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucket, cfg.AWSRegion, thumbnailKey),
 			Width:        thumbnailSize,
 			Height:       thumbnail.Bounds().Dy(),
 			OriginalKey:  key,
@@ -158,7 +155,7 @@ func handler(ctx context.Context, s3Event events.S3Event) error {
 
 		// DynamoDBに既存のアイテムを更新
 		_, updateErr := dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
-			TableName: aws.String(dynamoDBTableName),
+			TableName: aws.String(cfg.DynamoDBTableName),
 			Key: map[string]*dynamodb.AttributeValue{
 				"ImageID": {
 					S: aws.String(thumbnailInfo.ImageID),
