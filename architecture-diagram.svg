@@ -1,95 +1,70 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
   <!-- 背景 -->
-  <rect width="1000" height="700" fill="#f5f5f5" rx="10" ry="10"/>
+  <rect width="800" height="500" fill="#f5f5f5" rx="10" ry="10"/>
   
   <!-- AWS クラウド枠 -->
-  <rect x="100" y="50" width="850" height="600" fill="#ffffff" stroke="#232F3E" stroke-width="2" rx="15" ry="15"/>
+  <rect x="100" y="50" width="650" height="400" fill="#ffffff" stroke="#232F3E" stroke-width="2" rx="15" ry="15"/>
   <text x="120" y="80" font-family="Arial" font-size="18" fill="#232F3E">AWS Cloud</text>
   
   <!-- クライアント -->
-  <rect x="20" y="300" width="100" height="80" fill="#D5E8D4" stroke="#82B366" stroke-width="2" rx="5" ry="5"/>
-  <text x="70" y="345" font-family="Arial" font-size="14" text-anchor="middle">クライアント</text>
+  <rect x="20" y="200" width="100" height="80" fill="#D5E8D4" stroke="#82B366" stroke-width="2" rx="5" ry="5"/>
+  <text x="70" y="245" font-family="Arial" font-size="14" text-anchor="middle">クライアント</text>
   
   <!-- API Gateway -->
-  <rect x="200" y="270" width="120" height="140" fill="#DAE8FC" stroke="#6C8EBF" stroke-width="2" rx="5" ry="5"/>
-  <text x="260" y="300" font-family="Arial" font-size="14" text-anchor="middle">API Gateway</text>
-  <text x="260" y="320" font-family="Arial" font-size="12" text-anchor="middle">- /upload</text>
-  <text x="260" y="340" font-family="Arial" font-size="12" text-anchor="middle">- /list</text>
-  <text x="260" y="360" font-family="Arial" font-size="12" text-anchor="middle">- /tags</text>
-  <text x="260" y="380" font-family="Arial" font-size="12" text-anchor="middle">- /tags/{imageId}</text>
+  <rect x="200" y="170" width="120" height="140" fill="#DAE8FC" stroke="#6C8EBF" stroke-width="2" rx="5" ry="5"/>
+  <text x="260" y="220" font-family="Arial" font-size="14" text-anchor="middle">API Gateway</text>
+  <text x="260" y="240" font-family="Arial" font-size="12" text-anchor="middle">- /upload</text>
+  <text x="260" y="260" font-family="Arial" font-size="12" text-anchor="middle">- /list</text>
+  <text x="260" y="280" font-family="Arial" font-size="12" text-anchor="middle">- /tags</text>
   
-  <!-- クリーンアーキテクチャを示す Lambda 詳細 -->
-  <rect x="400" y="70" width="400" height="450" fill="#FFE6CC" stroke="#D79B00" stroke-width="2" rx="5" ry="5"/>
-  <text x="600" y="100" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Lambda Functions</text>
+  <!-- Lambda Functions with Clean Architecture -->
+  <rect x="400" y="120" width="180" height="240" fill="#FFE6CC" stroke="#D79B00" stroke-width="2" rx="5" ry="5"/>
+  <text x="490" y="150" font-family="Arial" font-size="14" text-anchor="middle" font-weight="bold">Lambda Functions</text>
   
-  <!-- アダプター層 -->
-  <rect x="420" y="120" width="360" height="70" fill="#fff2cc" stroke="#d6b656" stroke-width="2" rx="5" ry="5"/>
-  <text x="600" y="145" font-family="Arial" font-size="14" text-anchor="middle" font-weight="bold">Adapter Layer</text>
-  <text x="600" y="170" font-family="Arial" font-size="12" text-anchor="middle">Handler (upload, list, thumbnail, tags)</text>
+  <!-- クリーンアーキテクチャの層（簡略化） -->
+  <rect x="420" y="170" width="140" height="30" fill="#f8cecc" stroke="#b85450" stroke-width="1" rx="3" ry="3"/>
+  <text x="490" y="190" font-family="Arial" font-size="12" text-anchor="middle">Domain</text>
   
-  <!-- ユースケース層 -->
-  <rect x="420" y="210" width="360" height="90" fill="#d5e8d4" stroke="#82b366" stroke-width="2" rx="5" ry="5"/>
-  <text x="600" y="235" font-family="Arial" font-size="14" text-anchor="middle" font-weight="bold">Usecase Layer</text>
-  <text x="600" y="260" font-family="Arial" font-size="12" text-anchor="middle">UploadUsecase, MetadataUsecase</text>
-  <text x="600" y="280" font-family="Arial" font-size="12" text-anchor="middle">ThumbnailUsecase, TagUsecase</text>
+  <rect x="420" y="210" width="140" height="30" fill="#d5e8d4" stroke="#82b366" stroke-width="1" rx="3" ry="3"/>
+  <text x="490" y="230" font-family="Arial" font-size="12" text-anchor="middle">Usecase</text>
   
-  <!-- ドメイン層 -->
-  <rect x="420" y="320" width="360" height="90" fill="#f8cecc" stroke="#b85450" stroke-width="2" rx="5" ry="5"/>
-  <text x="600" y="345" font-family="Arial" font-size="14" text-anchor="middle" font-weight="bold">Domain Layer</text>
-  <text x="600" y="370" font-family="Arial" font-size="12" text-anchor="middle">Models, Repository Interfaces, Services</text>
+  <rect x="420" y="250" width="140" height="30" fill="#e1d5e7" stroke="#9673a6" stroke-width="1" rx="3" ry="3"/>
+  <text x="490" y="270" font-family="Arial" font-size="12" text-anchor="middle">Infrastructure</text>
   
-  <!-- インフラ層 -->
-  <rect x="420" y="430" width="360" height="70" fill="#e1d5e7" stroke="#9673a6" stroke-width="2" rx="5" ry="5"/>
-  <text x="600" y="455" font-family="Arial" font-size="14" text-anchor="middle" font-weight="bold">Infrastructure Layer</text>
-  <text x="600" y="480" font-family="Arial" font-size="12" text-anchor="middle">Storage, Persistence, Imaging Implementations</text>
+  <rect x="420" y="290" width="140" height="30" fill="#fff2cc" stroke="#d6b656" stroke-width="1" rx="3" ry="3"/>
+  <text x="490" y="310" font-family="Arial" font-size="12" text-anchor="middle">Adapter</text>
   
   <!-- S3 Bucket -->
-  <rect x="880" y="150" width="120" height="100" fill="#F8CECC" stroke="#B85450" stroke-width="2" rx="5" ry="5"/>
-  <text x="940" y="180" font-family="Arial" font-size="14" text-anchor="middle">S3 Bucket</text>
-  <text x="940" y="200" font-family="Arial" font-size="12" text-anchor="middle">cloudpix-images</text>
-  <text x="940" y="220" font-family="Arial" font-size="12" text-anchor="middle">- uploads/</text>
-  <text x="940" y="240" font-family="Arial" font-size="12" text-anchor="middle">- thumbnails/</text>
+  <rect x="620" y="120" width="120" height="80" fill="#F8CECC" stroke="#B85450" stroke-width="2" rx="5" ry="5"/>
+  <text x="680" y="155" font-family="Arial" font-size="14" text-anchor="middle">S3 Bucket</text>
+  <text x="680" y="175" font-family="Arial" font-size="12" text-anchor="middle">cloudpix-images</text>
   
   <!-- DynamoDB -->
-  <rect x="880" y="350" width="120" height="100" fill="#E1D5E7" stroke="#9673A6" stroke-width="2" rx="5" ry="5"/>
-  <text x="940" y="380" font-family="Arial" font-size="14" text-anchor="middle">DynamoDB</text>
-  <text x="940" y="400" font-family="Arial" font-size="12" text-anchor="middle">- metadata</text>
-  <text x="940" y="420" font-family="Arial" font-size="12" text-anchor="middle">- tags</text>
+  <rect x="620" y="280" width="120" height="80" fill="#E1D5E7" stroke="#9673A6" stroke-width="2" rx="5" ry="5"/>
+  <text x="680" y="315" font-family="Arial" font-size="14" text-anchor="middle">DynamoDB</text>
+  <text x="680" y="335" font-family="Arial" font-size="12" text-anchor="middle">metadata, tags</text>
   
   <!-- S3 イベント通知 -->
-  <path d="M 940 260 L 940 290 L 680 290 L 680 320" stroke="#000000" stroke-width="2" fill="none" stroke-dasharray="5,5" marker-end="url(#dashedArrow)"/>
-  <rect x="880" y="290" width="120" height="40" fill="#FFF2CC" stroke="#D6B656" stroke-width="2" rx="5" ry="5"/>
-  <text x="940" y="315" font-family="Arial" font-size="12" text-anchor="middle">S3 Event Notification</text>
+  <path d="M 680 200 L 640 235 L 580 235" stroke="#000000" stroke-width="1.5" fill="none" stroke-dasharray="5,5" marker-end="url(#dashedArrow)"/>
+  <text x="620" y="225" font-family="Arial" font-size="10" text-anchor="middle">S3 Event</text>
   
   <!-- 接続線 -->
   <!-- クライアント → API Gateway -->
-  <path d="M 120 330 L 200 330" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
-  <text x="160" y="320" font-family="Arial" font-size="10" text-anchor="middle">リクエスト</text>
+  <path d="M 120 230 L 200 230" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="160" y="220" font-family="Arial" font-size="10" text-anchor="middle">リクエスト</text>
   
   <!-- API Gateway → クライアント -->
-  <path d="M 200 350 L 120 350" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
-  <text x="160" y="370" font-family="Arial" font-size="10" text-anchor="middle">レスポンス</text>
+  <path d="M 200 250 L 120 250" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="160" y="270" font-family="Arial" font-size="10" text-anchor="middle">レスポンス</text>
   
   <!-- API Gateway → Lambda -->
-  <path d="M 320 330 L 400 330" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 320 240 L 400 240" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
   
   <!-- Lambda → S3 -->
-  <path d="M 800 180 L 880 180" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
-  <text x="840" y="170" font-family="Arial" font-size="10" text-anchor="middle">保存/取得</text>
+  <path d="M 580 160 L 620 160" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
   
   <!-- Lambda → DynamoDB -->
-  <path d="M 800 380 L 880 380" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
-  <text x="840" y="370" font-family="Arial" font-size="10" text-anchor="middle">保存/取得</text>
-  
-  <!-- ECR Repositories -->
-  <rect x="400" y="550" width="400" height="70" fill="#FFF2CC" stroke="#D6B656" stroke-width="2" rx="5" ry="5"/>
-  <text x="600" y="575" font-family="Arial" font-size="14" text-anchor="middle" font-weight="bold">ECR Repositories</text>
-  <text x="600" y="600" font-family="Arial" font-size="12" text-anchor="middle">upload, list, thumbnail, tags</text>
-  
-  <!-- CloudWatch -->
-  <rect x="200" y="450" width="120" height="60" fill="#DAE8FC" stroke="#6C8EBF" stroke-width="2" rx="5" ry="5"/>
-  <text x="260" y="480" font-family="Arial" font-size="14" text-anchor="middle">CloudWatch</text>
-  <text x="260" y="500" font-family="Arial" font-size="12" text-anchor="middle">Logs</text>
+  <path d="M 580 320 L 620 320" stroke="#000000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
   
   <!-- マーカー定義 -->
   <defs>
@@ -101,14 +76,16 @@
     </marker>
   </defs>
   
+  <!-- ECR Repositories -->
+  <rect x="400" y="380" width="140" height="40" fill="#FFF2CC" stroke="#D6B656" stroke-width="2" rx="5" ry="5"/>
+  <text x="470" y="405" font-family="Arial" font-size="12" text-anchor="middle">ECR Repositories</text>
+  
   <!-- Legend -->
-  <rect x="120" y="550" width="200" height="80" fill="none" stroke="#232F3E" stroke-width="1" rx="5" ry="5"/>
-  <text x="220" y="570" font-family="Arial" font-size="12" text-anchor="middle" font-weight="bold">クリーンアーキテクチャ構造</text>
-  <rect x="140" y="580" width="15" height="15" fill="#f8cecc" stroke="#b85450" stroke-width="1"/>
-  <text x="230" y="593" font-family="Arial" font-size="10" text-anchor="start">Domain Layer (中心)</text>
-  <rect x="140" y="600" width="15" height="15" fill="#d5e8d4" stroke="#82b366" stroke-width="1"/>
-  <text x="230" y="613" font-family="Arial" font-size="10" text-anchor="start">Usecase Layer (ビジネスロジック)</text>
+  <rect x="620" y="380" width="120" height="60" fill="none" stroke="#232F3E" stroke-width="1" rx="5" ry="5"/>
+  <text x="680" y="400" font-family="Arial" font-size="12" text-anchor="middle" font-weight="bold">Clean Architecture</text>
+  <text x="680" y="420" font-family="Arial" font-size="10" text-anchor="middle">Domain → Usecase →</text>
+  <text x="680" y="435" font-family="Arial" font-size="10" text-anchor="middle">Infrastructure/Adapter</text>
   
   <!-- タイトル -->
-  <text x="500" y="30" font-family="Arial" font-size="24" text-anchor="middle" font-weight="bold">CloudPix アーキテクチャ</text>
+  <text x="400" y="30" font-family="Arial" font-size="24" text-anchor="middle" font-weight="bold">CloudPix アーキテクチャ</text>
 </svg>
