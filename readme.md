@@ -4,26 +4,34 @@ CloudPixは、AWSのサーバーレスサービスを活用した画像アップ
 
 ## アーキテクチャ図
 
+![CloudPix アーキテクチャ](./architecture-diagram.svg)
+
+## クリーンアーキテクチャの採用
+
+本プロジェクトはクリーンアーキテクチャの原則に従って実装されています。
+
+### アーキテクチャ層の構成
+
 ```
-                                  ┌────────────────────┐
-                                  │     S3 Event       │
-                                  │    Notification    │
-                                  └──────────┬─────────┘
-                                             │
-                                             ▼
-┌─────────┐     ┌──────────────┐     ┌──────────────────┐     ┌───────────────┐
-│         │     │              │     │ Lambda Functions  │     │   S3 Storage   │
-│ クライアント │────▶│  API Gateway  │────▶│  - upload        │────▶│  - uploads/    │
-│         │     │              │     │  - list          │     │  - thumbnails/  │
-└─────────┘     └──────────────┘     │  - thumbnail     │     └───────────────┘
-                        │             │  - tags          │              │
-                        │             └──────────────────┘              │
-                        ▼                       ▼                       │
-                ┌──────────────┐       ┌───────────────┐                │
-                │ CloudWatch   │       │   DynamoDB    │◀───────────────┘
-                │    Logs      │       │   - metadata  │
-                └──────────────┘       │   - tags      │
-                                       └───────────────┘
+cloudpix/
+  ├── cmd/                 # エントリーポイント
+  │   ├── upload/
+  │   ├── list/
+  │   ├── thumbnail/
+  │   └── tags/
+  ├── internal/            # 内部パッケージ
+  │   ├── domain/          # ドメイン層
+  │   │   ├── model/       # ドメインモデル
+  │   │   ├── repository/  # リポジトリインターフェース
+  │   │   └── service/     # ドメインサービス
+  │   ├── usecase/         # ユースケース層
+  │   ├── infrastructure/  # インフラストラクチャ層
+  │   │   ├── persistence/ # DynamoDB実装
+  │   │   ├── storage/     # S3実装
+  │   │   └── imaging/     # 画像処理実装
+  │   └── adapter/         # アダプター層
+  │       └── handler/     # イベントハンドラー
+  └── config/              # 設定
 ```
 
 ## 主要コンポーネント
@@ -65,78 +73,30 @@ CloudPixは、AWSのサーバーレスサービスを活用した画像アップ
 - **cloudpix-thumbnail** - サムネイル生成関数用のコンテナイメージを格納
 - **cloudpix-tags** - タグ管理関数用のコンテナイメージを格納
 
-## データフロー
+## ドメインモデル
 
-### 画像アップロードフロー
-1. クライアントが `/upload` エンドポイントにPOSTリクエストを送信
-2. API GatewayがリクエストをLambda関数に転送
-3. Lambda関数が:
-   - 画像データを受け取る (Base64エンコード形式)
-   - S3バケットに画像を保存
-   - メタデータを生成しDynamoDBに保存
-4. 保存結果とダウンロードURLをクライアントに返却
+### 主要なドメインモデル
 
-### サムネイル生成フロー
-1. 画像が `uploads/` フォルダにアップロードされる
-2. S3イベント通知が発生し、サムネイル生成Lambda関数が起動
-3. Lambda関数が:
-   - S3から元画像を取得
-   - 画像処理ライブラリを使用してサムネイルを生成
-   - サムネイルを `thumbnails/` フォルダに保存
-   - DynamoDBのメタデータを更新してサムネイル情報を追加
+- **ImageMetadata**: 画像のメタデータを表すモデル
+- **ThumbnailInfo**: サムネイル情報を表すモデル
+- **ImageData**: 画像のバイナリデータと ContentType を保持
+- **TagItem**: タグ情報を表すモデル
+- **UploadRequest**: アップロードリクエストのモデル
+- **UploadResponse**: アップロードレスポンスのモデル
 
-### タグ管理フロー
-1. クライアントが `/tags` エンドポイントにリクエストを送信
-   - POST: 画像にタグを追加
-   - GET: すべてのタグの一覧を取得
-2. または `/tags/{imageId}` エンドポイントにリクエストを送信
-   - GET: 特定の画像のタグを取得
-   - DELETE: 特定の画像のタグを削除
-3. タグ管理Lambda関数が:
-   - タグをDynamoDBに追加、更新、または削除
-   - タグの一覧をクライアントに返却
+### リポジトリインターフェース
 
-### 画像一覧取得フロー
-1. クライアントが `/list` エンドポイントにGETリクエストを送信
-   - オプションのクエリパラメータ:
-     - `date` - 特定の日付でフィルタリング
-     - `tag` - 特定のタグを持つ画像でフィルタリング
-2. API GatewayがリクエストをLambda関数に転送
-3. Lambda関数がDynamoDBからメタデータを取得
-4. 画像メタデータの一覧をクライアントに返却
-   - オリジナル画像とサムネイル両方のURLを含む
+ドメイン層で定義され、インフラストラクチャ層で実装されるインターフェース:
 
-## プロジェクト構成
+- **MetadataRepository**: メタデータの取得操作
+- **StorageRepository**: S3操作（画像の取得、アップロード、URLの生成）
+- **ThumbnailRepository**: サムネイル情報の更新
+- **TagRepository**: タグの操作（追加、削除、検索）
+- **UploadMetadataRepository**: アップロードメタデータの保存
 
-```
-cloudpix/
-  ├── terraform/           # Terraformによるインフラ定義
-  │   ├── api_gateway.tf   # API Gateway定義
-  │   ├── dynamodb.tf      # DynamoDBテーブル定義
-  │   ├── ecr.tf           # ECRリポジトリ定義
-  │   ├── iam.tf           # IAMロールとポリシー定義
-  │   ├── lambda.tf        # Lambda関数定義
-  │   ├── main.tf          # メインのTerraform設定
-  │   ├── outputs.tf       # 出力値の定義
-  │   ├── providers.tf     # プロバイダー設定
-  │   ├── s3.tf            # S3バケット設定
-  │   ├── tags.tf          # タグ機能の定義
-  │   ├── thumbnail.tf     # サムネイル生成機能の定義
-  │   └── variables.tf     # 変数定義
-  ├── cmd/                 # Goのソースコード
-  │   ├── upload/          # アップロード関数
-  │   │   └── main.go
-  │   ├── list/            # 一覧取得関数
-  │   │   └── main.go
-  │   ├── thumbnail/       # サムネイル生成関数
-  │   │   └── main.go
-  │   └── tags/            # タグ管理関数
-  │       └── main.go
-  ├── Dockerfile           # コンテナイメージ定義
-  ├── build_and_push.sh    # イメージビルドスクリプト
-  ├── go.mod               # Go依存関係
-  └── Makefile             # タスク自動化
-```
+### ドメインサービス
+
+- **ImageService**: 画像処理に関する操作（デコード、サムネイル生成、ID抽出）
 
 ## 実装機能
 
@@ -161,6 +121,9 @@ make test
 
 # APIのテスト - 画像一覧取得
 make test-list
+
+# APIのテスト - 特定の日付の画像一覧取得
+make test-list-date
 
 # APIのテスト - タグ追加
 make test-add-tags
@@ -190,6 +153,8 @@ make update-tags-code
 ## 今後の拡張予定
 
 - 画像処理機能の拡張（リサイズ、フィルター適用など）
-- ユーザー認証
+- ユーザー認証とアクセス制御
 - フロントエンドインターフェース
 - 複雑な検索クエリ（複数タグの組み合わせなど）
+- バッチ処理機能（定期的なクリーンアップなど）
+- メトリクス収集と監視機能の強化
