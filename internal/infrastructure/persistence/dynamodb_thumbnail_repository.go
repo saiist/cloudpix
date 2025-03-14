@@ -10,13 +10,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-// DynamoDBを使用したサムネイルリポジトリの実装
 type DynamoDBThumbnailRepository struct {
 	dynamoDBClient    *dynamodb.DynamoDB
 	metadataTableName string
 }
 
-// 新しいDynamoDBサムネイルリポジトリを作成
 func NewDynamoDBThumbnailRepository(
 	dynamoDBClient *dynamodb.DynamoDB,
 	metadataTableName string,

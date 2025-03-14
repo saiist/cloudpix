@@ -6,7 +6,7 @@ import (
 	"cloudpix/internal/domain/repository"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -37,7 +37,7 @@ func (r *S3StorageRepository) FetchImage(ctx context.Context, bucket, key string
 	defer resp.Body.Close()
 
 	// レスポンスボディを読み込む
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read S3 object body: %w", err)
 	}
