@@ -5,6 +5,7 @@ import (
 
 	"cloudpix/config"
 	"cloudpix/internal/adapter/handler"
+	"cloudpix/internal/infrastructure/persistence"
 	"cloudpix/internal/infrastructure/storage"
 	"cloudpix/internal/usecase"
 
@@ -34,10 +35,11 @@ func main() {
 	log.Printf("Upload Lambda initialized with bucket: %s, table: %s", cfg.S3BucketName, cfg.MetadataTableName)
 
 	// リポジトリのセットアップ
-	uploadRepo := storage.NewS3UploadRepository(s3Client, dbClient, cfg.S3BucketName, cfg.MetadataTableName, cfg.AWSRegion)
+	storageRepo := storage.NewS3StorageRepository(s3Client, cfg.AWSRegion)
+	metadataRepo := persistence.NewDynamoDBUploadMetadataRepository(dbClient, cfg.MetadataTableName)
 
 	// ユースケースのセットアップ
-	uploadUsecase := usecase.NewUploadUsecase(uploadRepo)
+	uploadUsecase := usecase.NewUploadUsecase(storageRepo, metadataRepo, cfg.S3BucketName)
 
 	// ハンドラのセットアップ
 	uploadHandler := handler.NewUploadHandler(uploadUsecase)

@@ -40,7 +40,7 @@ func main() {
 
 	// リポジトリのセットアップ
 	thumbnailRepo := persistence.NewDynamoDBThumbnailRepository(dbClient, cfg.MetadataTableName)
-	storageRepo := storage.NewS3StorageRepository(s3Client)
+	storageRepo := storage.NewS3StorageRepository(s3Client, cfg.AWSRegion)
 
 	// サービスのセットアップ
 	imageService := imaging.NewImageService()
