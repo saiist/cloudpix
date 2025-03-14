@@ -31,7 +31,7 @@ func main() {
 	log.Printf("Tags Lambda initialized with tables: Metadata=%s", cfg.MetadataTableName)
 
 	// リポジトリのセットアップ
-	metaRepo := persistence.NewDynamoDBMetadataRepository(dbClient, cfg.TagsTableName)
+	metaRepo := persistence.NewDynamoDBMetadataRepository(dbClient, cfg.MetadataTableName)
 
 	// ユースケースのセットアップ
 	metaUsecase := usecase.NewMetadataUsecase(metaRepo)
