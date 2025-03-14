@@ -67,7 +67,7 @@ func init() {
 	s3Client = s3.New(sess)
 	dynamoDBClient = dynamodb.New(sess)
 
-	log.Printf("Lambda initialized with bucket: %s, DynamoDB table: %s", cfg.S3BucketName, cfg.DynamoDBTableName)
+	log.Printf("Lambda initialized with bucket: %s, DynamoDB table: %s", cfg.S3BucketName, cfg.MetadataTableName)
 }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -181,7 +181,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 
 	// DynamoDBにメタデータを保存
 	_, err = dynamoDBClient.PutItem(&dynamodb.PutItemInput{
-		TableName: aws.String(cfg.DynamoDBTableName),
+		TableName: aws.String(cfg.MetadataTableName),
 		Item:      item,
 	})
 

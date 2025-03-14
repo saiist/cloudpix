@@ -64,7 +64,7 @@ resource "aws_lambda_function" "cloudpix_upload" {
   environment {
     variables = {
       S3_BUCKET_NAME      = aws_s3_bucket.cloudpix_images.bucket
-      DYNAMODB_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
+      METADATA_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
     }
   }
 
@@ -85,7 +85,7 @@ resource "aws_lambda_function" "cloudpix_list" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
+      METADATA_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
     }
   }
 

@@ -16,7 +16,7 @@ output "s3_bucket_name" {
   description = "画像保存用S3バケット名"
 }
 
-output "dynamodb_table_name" {
+output "METADATA_TABLE_NAME" {
   value       = aws_dynamodb_table.cloudpix_metadata.name
   description = "メタデータ保存用DynamoDBテーブル名"
 }

@@ -155,7 +155,7 @@ func handler(ctx context.Context, s3Event events.S3Event) error {
 
 		// DynamoDBに既存のアイテムを更新
 		_, updateErr := dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
-			TableName: aws.String(cfg.DynamoDBTableName),
+			TableName: aws.String(cfg.MetadataTableName),
 			Key: map[string]*dynamodb.AttributeValue{
 				"ImageID": {
 					S: aws.String(thumbnailInfo.ImageID),

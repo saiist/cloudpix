@@ -10,16 +10,16 @@ import (
 )
 
 type DynamoDBTagRepository struct {
-	client        *dynamodb.DynamoDB
-	tagsTableName string
-	metaTableName string
+	client            *dynamodb.DynamoDB
+	tagsTableName     string
+	metadataTableName string
 }
 
-func NewDynamoDBTagRepository(client *dynamodb.DynamoDB, tagsTableName, metaTableName string) repository.TagRepository {
+func NewDynamoDBTagRepository(client *dynamodb.DynamoDB, tagsTableName, metadataTableName string) repository.TagRepository {
 	return &DynamoDBTagRepository{
-		client:        client,
-		tagsTableName: tagsTableName,
-		metaTableName: metaTableName,
+		client:            client,
+		tagsTableName:     tagsTableName,
+		metadataTableName: metadataTableName,
 	}
 }
 
@@ -194,7 +194,7 @@ func (r *DynamoDBTagRepository) RemoveAllTags(ctx context.Context, imageID strin
 // 画像の存在を確認
 func (r *DynamoDBTagRepository) VerifyImageExists(ctx context.Context, imageID string) (bool, error) {
 	result, err := r.client.GetItemWithContext(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(r.metaTableName),
+		TableName: aws.String(r.metadataTableName),
 		Key: map[string]*dynamodb.AttributeValue{
 			"ImageID": {
 				S: aws.String(imageID),

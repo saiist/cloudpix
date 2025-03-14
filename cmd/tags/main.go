@@ -28,10 +28,10 @@ func main() {
 
 	// DynamoDBクライアントの初期化
 	dbClient := dynamodb.New(sess)
-	log.Printf("Tags Lambda initialized with tables: Tags=%s, Metadata=%s", cfg.TagsTableName, cfg.MetaTableName)
+	log.Printf("Tags Lambda initialized with tables: Tags=%s, Metadata=%s", cfg.TagsTableName, cfg.MetadataTableName)
 
 	// リポジトリのセットアップ
-	tagRepo := persistence.NewDynamoDBTagRepository(dbClient, cfg.TagsTableName, cfg.MetaTableName)
+	tagRepo := persistence.NewDynamoDBTagRepository(dbClient, cfg.TagsTableName, cfg.MetadataTableName)
 
 	// ユースケースのセットアップ
 	tagUsecase := usecase.NewTagUsecase(tagRepo)
@@ -41,5 +41,4 @@ func main() {
 
 	// Lambda関数のスタート
 	lambda.Start(tagHandler.Handle)
-
 }
