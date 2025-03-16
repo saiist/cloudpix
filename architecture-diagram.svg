@@ -1,21 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 550">
   <!-- 背景 -->
-  <rect width="800" height="500" fill="#f5f5f5" rx="10" ry="10"/>
+  <rect width="800" height="550" fill="#f5f5f5" rx="10" ry="10"/>
   
   <!-- AWS クラウド枠 -->
-  <rect x="100" y="50" width="650" height="400" fill="#ffffff" stroke="#232F3E" stroke-width="2" rx="15" ry="15"/>
+  <rect x="100" y="50" width="650" height="450" fill="#ffffff" stroke="#232F3E" stroke-width="2" rx="15" ry="15"/>
   <text x="120" y="80" font-family="Arial" font-size="18" fill="#232F3E">AWS Cloud</text>
   
   <!-- クライアント -->
   <rect x="20" y="200" width="100" height="80" fill="#D5E8D4" stroke="#82B366" stroke-width="2" rx="5" ry="5"/>
   <text x="70" y="245" font-family="Arial" font-size="14" text-anchor="middle">クライアント</text>
   
+  <!-- Cognito -->
+  <rect x="200" y="90" width="120" height="65" fill="#ffe6cc" stroke="#d79b00" stroke-width="2" rx="5" ry="5"/>
+  <text x="260" y="115" font-family="Arial" font-size="14" text-anchor="middle">Cognito</text>
+  <text x="260" y="135" font-family="Arial" font-size="12" text-anchor="middle">ユーザープール</text>
+  
   <!-- API Gateway -->
   <rect x="200" y="170" width="120" height="140" fill="#DAE8FC" stroke="#6C8EBF" stroke-width="2" rx="5" ry="5"/>
-  <text x="260" y="220" font-family="Arial" font-size="14" text-anchor="middle">API Gateway</text>
-  <text x="260" y="240" font-family="Arial" font-size="12" text-anchor="middle">- /upload</text>
-  <text x="260" y="260" font-family="Arial" font-size="12" text-anchor="middle">- /list</text>
-  <text x="260" y="280" font-family="Arial" font-size="12" text-anchor="middle">- /tags</text>
+  <text x="260" y="195" font-family="Arial" font-size="14" text-anchor="middle">API Gateway</text>
+  <text x="260" y="215" font-family="Arial" font-size="12" text-anchor="middle">- /upload</text>
+  <text x="260" y="235" font-family="Arial" font-size="12" text-anchor="middle">- /list</text>
+  <text x="260" y="255" font-family="Arial" font-size="12" text-anchor="middle">- /tags</text>
+  <text x="260" y="275" font-family="Arial" font-size="12" text-anchor="middle">(Cognito認証)</text>
   
   <!-- Lambda Functions with Clean Architecture -->
   <rect x="400" y="120" width="180" height="240" fill="#FFE6CC" stroke="#D79B00" stroke-width="2" rx="5" ry="5"/>
@@ -47,6 +53,14 @@
   <!-- S3 イベント通知 -->
   <path d="M 680 200 L 640 235 L 580 235" stroke="#000000" stroke-width="1.5" fill="none" stroke-dasharray="5,5" marker-end="url(#dashedArrow)"/>
   <text x="620" y="225" font-family="Arial" font-size="10" text-anchor="middle">S3 Event</text>
+  
+  <!-- 接続線 - API Gateway と Cognito -->
+  <path d="M 260 170 L 260 155" stroke="#000000" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="275" y="165" font-family="Arial" font-size="10" text-anchor="middle">認証連携</text>
+  
+  <!-- 接続線 - クライアント と Cognito -->
+  <path d="M 120 210 L 170 130 L 200 130" stroke="#000000" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="160" y="120" font-family="Arial" font-size="10" text-anchor="middle">認証</text>
   
   <!-- 接続線 -->
   <!-- クライアント → API Gateway -->
@@ -80,11 +94,17 @@
   <rect x="400" y="380" width="140" height="40" fill="#FFF2CC" stroke="#D6B656" stroke-width="2" rx="5" ry="5"/>
   <text x="470" y="405" font-family="Arial" font-size="12" text-anchor="middle">ECR Repositories</text>
   
+  <!-- Auth Middleware -->
+  <rect x="420" y="330" width="140" height="30" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1" rx="3" ry="3"/>
+  <text x="490" y="350" font-family="Arial" font-size="12" text-anchor="middle">Auth Middleware</text>
+  
   <!-- Legend -->
-  <rect x="620" y="380" width="120" height="60" fill="none" stroke="#232F3E" stroke-width="1" rx="5" ry="5"/>
+  <rect x="620" y="380" width="120" height="100" fill="none" stroke="#232F3E" stroke-width="1" rx="5" ry="5"/>
   <text x="680" y="400" font-family="Arial" font-size="12" text-anchor="middle" font-weight="bold">Clean Architecture</text>
   <text x="680" y="420" font-family="Arial" font-size="10" text-anchor="middle">Domain → Usecase →</text>
   <text x="680" y="435" font-family="Arial" font-size="10" text-anchor="middle">Infrastructure/Adapter</text>
+  <text x="680" y="455" font-family="Arial" font-size="12" text-anchor="middle" font-weight="bold">認証フロー</text>
+  <text x="680" y="470" font-family="Arial" font-size="10" text-anchor="middle">JWT認証 + ユーザーグループ</text>
   
   <!-- タイトル -->
   <text x="400" y="30" font-family="Arial" font-size="24" text-anchor="middle" font-weight="bold">CloudPix アーキテクチャ</text>
