@@ -5,6 +5,7 @@ import (
 
 	"cloudpix/config"
 	"cloudpix/internal/adapter/handler"
+	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/infrastructure/persistence"
 	"cloudpix/internal/usecase"
 
@@ -36,8 +37,11 @@ func main() {
 	// ユースケースのセットアップ
 	tagUsecase := usecase.NewTagUsecase(tagRepo)
 
+	// ミドルウェアの作成
+	authMiddleware := middleware.CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.ClientID)
+
 	// ハンドラのセットアップ
-	tagHandler := handler.NewTagHandler(tagUsecase)
+	tagHandler := handler.NewTagHandler(tagUsecase, authMiddleware)
 
 	// Lambda関数のスタート
 	lambda.Start(tagHandler.Handle)

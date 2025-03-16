@@ -5,6 +5,7 @@ import (
 
 	"cloudpix/config"
 	"cloudpix/internal/adapter/handler"
+	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/infrastructure/persistence"
 	"cloudpix/internal/usecase"
 
@@ -36,8 +37,11 @@ func main() {
 	// ユースケースのセットアップ
 	metaUsecase := usecase.NewMetadataUsecase(metaRepo)
 
+	// ミドルウェアの作成
+	authMiddleware := middleware.CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.ClientID)
+
 	// ハンドラのセットアップ
-	metaHandler := handler.NewListHandler(metaUsecase)
+	metaHandler := handler.NewListHandler(metaUsecase, authMiddleware)
 
 	// Lambda関数のスタート
 	lambda.Start(metaHandler.Handle)

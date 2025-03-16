@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/domain/model"
 	"cloudpix/internal/usecase"
 	"context"
@@ -12,17 +13,26 @@ import (
 )
 
 type TagHandler struct {
-	tagUsecase *usecase.TagUsecase
+	tagUsecase     *usecase.TagUsecase
+	authMiddleware middleware.AuthMiddleware
 }
 
-func NewTagHandler(tagUsecase *usecase.TagUsecase) *TagHandler {
+func NewTagHandler(tagUsecase *usecase.TagUsecase, authMiddleware middleware.AuthMiddleware) *TagHandler {
 	return &TagHandler{
-		tagUsecase: tagUsecase,
+		tagUsecase:     tagUsecase,
+		authMiddleware: authMiddleware,
 	}
 }
 
 // Handle はAPIリクエストを処理する
 func (h *TagHandler) Handle(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	// 認証ミドルウェアを適用
+	handlerWithAuth := WithAuth(h.authMiddleware, h.handleTag)
+	return handlerWithAuth(ctx, request)
+}
+
+// handleTag は認証なしの実際のハンドラー処理
+func (h *TagHandler) handleTag(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	log.Printf("Processing request: %s %s", request.HTTPMethod, request.Path)
 
 	// パスとメソッドに基づいてルーティング

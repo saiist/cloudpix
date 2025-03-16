@@ -64,32 +64,45 @@ test-upload:
 	@echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" > /tmp/test_base64.txt
 	
 	@echo "1. ユーザー存在確認と作成..."
-	@aws cognito-idp admin-get-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) > /dev/null 2>&1 || \
-	(aws cognito-idp admin-create-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
-	--user-attributes Name=email,Value=$(TEST_EMAIL) Name=email_verified,Value=true --temporary-password $(TEST_PASSWORD) > /dev/null && \
-	aws cognito-idp admin-set-user-password --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
-	--password $(TEST_PASSWORD) --permanent > /dev/null && sleep 2)
+	@# ユーザーの存在確認
+	@USER_EXISTS=false; \
+	if aws cognito-idp admin-get-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) > /dev/null 2>&1; then \
+		echo "ユーザーが既に存在します"; \
+		USER_EXISTS=true; \
+	else \
+		echo "ユーザーを作成しています..."; \
+		aws cognito-idp admin-create-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
+		--user-attributes Name=email,Value=$(TEST_EMAIL) Name=email_verified,Value=true --temporary-password $(TEST_PASSWORD) > /dev/null && \
+		aws cognito-idp admin-set-user-password --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
+		--password $(TEST_PASSWORD) --permanent > /dev/null && \
+		echo "ユーザーを作成しました。認証が有効になるまで10秒待機します..." && \
+		sleep 10; \
+	fi
 	
 	@echo "2. 認証トークンを取得しています..."
-	@aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH --client-id $(CLIENT_ID) \
-	--auth-parameters USERNAME=$(TEST_EMAIL),PASSWORD=$(TEST_PASSWORD) > /tmp/auth_response.json || true
-	$(eval TOKEN := $(shell cat /tmp/auth_response.json 2>/dev/null | jq -r '.AuthenticationResult.IdToken' 2>/dev/null || echo ""))
-	
-	@if [ -z "$(TOKEN)" ] || [ "$(TOKEN)" = "null" ]; then \
-		sleep 3; \
+	@# 最大3回まで認証を試行
+	@for i in 1 2 3; do \
 		aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH --client-id $(CLIENT_ID) \
-		--auth-parameters USERNAME=$(TEST_EMAIL),PASSWORD=$(TEST_PASSWORD) > /tmp/auth_response_retry.json || true; \
-		TOKEN=`cat /tmp/auth_response_retry.json 2>/dev/null | jq -r '.AuthenticationResult.IdToken' 2>/dev/null || echo ""`; \
-		if [ -z "$$TOKEN" ] || [ "$$TOKEN" = "null" ]; then \
+		--auth-parameters USERNAME=$(TEST_EMAIL),PASSWORD=$(TEST_PASSWORD) > /tmp/auth_response.json 2>/dev/null || true; \
+		TOKEN=`cat /tmp/auth_response.json 2>/dev/null | jq -r '.AuthenticationResult.IdToken' 2>/dev/null || echo ""`; \
+		if [ ! -z "$$TOKEN" ] && [ "$$TOKEN" != "null" ]; then \
+			echo "トークンを取得しました"; \
+			break; \
+		else \
+			echo "認証試行 $$i 回目が失敗しました。再試行します..."; \
+			sleep 3; \
+		fi; \
+		if [ $$i -eq 3 ]; then \
 			echo "認証トークンの取得に失敗しました"; \
 			exit 1; \
 		fi; \
-	fi
+	done
 	
 	@echo "3. アップロードリクエストを送信しています..."
+	@TOKEN=`cat /tmp/auth_response.json | jq -r '.AuthenticationResult.IdToken'`
 	@curl -s -X POST $(API_URL) \
 	  -H "Content-Type: application/json" \
-	  -H "Authorization: Bearer $(TOKEN)" \
+	  -H "Authorization: Bearer $$TOKEN" \
 	  -d "{\"fileName\":\"test.png\",\"contentType\":\"image/png\",\"data\":\"`cat /tmp/test_base64.txt`\"}" | jq .
 
 # 画像一覧のテスト
