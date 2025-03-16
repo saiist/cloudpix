@@ -7,6 +7,8 @@ type Config struct {
 	TagsTableName     string
 	MetadataTableName string
 	AWSRegion         string
+	UserPoolID        string
+	ClientID          string
 }
 
 func NewConfig() *Config {
@@ -15,5 +17,7 @@ func NewConfig() *Config {
 		TagsTableName:     os.Getenv("TAGS_TABLE_NAME"),
 		MetadataTableName: os.Getenv("METADATA_TABLE_NAME"),
 		AWSRegion:         os.Getenv("AWS_REGION"),
+		UserPoolID:        os.Getenv("USER_POOL_ID"),
+		ClientID:          os.Getenv("USER_POOL_CLIENT_ID"),
 	}
 }

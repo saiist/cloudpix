@@ -5,6 +5,7 @@ import (
 
 	"cloudpix/config"
 	"cloudpix/internal/adapter/handler"
+	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/infrastructure/persistence"
 	"cloudpix/internal/infrastructure/storage"
 	"cloudpix/internal/usecase"
@@ -41,8 +42,11 @@ func main() {
 	// ユースケースのセットアップ
 	uploadUsecase := usecase.NewUploadUsecase(storageRepo, metadataRepo, cfg.S3BucketName)
 
+	// ミドルウェアの作成
+	authMiddleware := middleware.CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.UserPoolID)
+
 	// ハンドラのセットアップ
-	uploadHandler := handler.NewUploadHandler(uploadUsecase)
+	uploadHandler := handler.NewUploadHandler(uploadUsecase, authMiddleware)
 
 	// Lambda関数のスタート
 	lambda.Start(uploadHandler.Handle)

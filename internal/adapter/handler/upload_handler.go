@@ -1,72 +1,67 @@
 package handler
 
 import (
+	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/domain/model"
 	"cloudpix/internal/usecase"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
 )
 
 type UploadHandler struct {
-	uploadUsecase *usecase.UploadUsecase
+	uploadUsecase  *usecase.UploadUsecase
+	authMiddleware middleware.AuthMiddleware
 }
 
-func NewUploadHandler(uploadUsecase *usecase.UploadUsecase) *UploadHandler {
+func NewUploadHandler(uploadUsecase *usecase.UploadUsecase, authMiddleware middleware.AuthMiddleware) *UploadHandler {
 	return &UploadHandler{
-		uploadUsecase: uploadUsecase,
+		uploadUsecase:  uploadUsecase,
+		authMiddleware: authMiddleware,
 	}
 }
 
 // Handle はAPIリクエストを処理します
 func (h *UploadHandler) Handle(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	log.Printf("Received request: %s", request.Body)
-
-	// リクエストボディをパース
-	var uploadReq model.UploadRequest
-	err := json.Unmarshal([]byte(request.Body), &uploadReq)
-	if err != nil {
-		log.Printf("Error parsing request: %s", err)
-		return h.errorResponse(400, fmt.Sprintf("Invalid request format: %s", err))
-	}
-
-	// アップロード処理を実行
-	response, err := h.uploadUsecase.ProcessUpload(ctx, &uploadReq)
-	if err != nil {
-		log.Printf("Error processing upload: %s", err)
-		return h.errorResponse(500, fmt.Sprintf("Failed to process upload: %s", err))
-	}
-
-	// レスポンスをJSON形式で返す
-	return h.jsonResponse(200, response)
+	// 認証ミドルウェアを適用
+	handlerWithAuth := WithAuth(h.authMiddleware, h.handleUpload)
+	return handlerWithAuth(ctx, request)
 }
 
-// jsonResponse はJSON形式のレスポンスを作成します
-func (h *UploadHandler) jsonResponse(statusCode int, body interface{}) (events.APIGatewayProxyResponse, error) {
-	responseJSON, err := json.Marshal(body)
-	if err != nil {
-		return h.errorResponse(500, "Internal Server Error")
+// handleUpload は認証なしの実際のハンドラー処理
+func (h *UploadHandler) handleUpload(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	log.Printf("Received request: %s", event.Body)
+
+	// リクエストボディを解析
+	var request model.UploadRequest
+	if err := json.Unmarshal([]byte(event.Body), &request); err != nil {
+		log.Printf("Failed to unmarshal request: %v", err)
+		return h.authMiddleware.CreateErrorResponse(http.StatusBadRequest, "不正なリクエスト形式"), nil
 	}
 
+	// アップロード処理実行
+	response, err := h.uploadUsecase.ProcessUpload(ctx, &request)
+	if err != nil {
+		log.Printf("Upload error: %v", err)
+		return h.authMiddleware.CreateErrorResponse(http.StatusInternalServerError, "アップロード処理中にエラーが発生しました"), nil
+	}
+
+	// レスポンスのJSON変換
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Failed to marshal response: %v", err)
+		return h.authMiddleware.CreateErrorResponse(http.StatusInternalServerError, "レスポンス生成中にエラーが発生しました"), nil
+	}
+
+	// 成功レスポンスを返す
 	return events.APIGatewayProxyResponse{
-		StatusCode: statusCode,
+		StatusCode: http.StatusOK,
 		Headers: map[string]string{
 			"Content-Type": "application/json",
 		},
 		Body: string(responseJSON),
-	}, nil
-}
-
-// errorResponse はエラーレスポンスを作成します
-func (h *UploadHandler) errorResponse(statusCode int, message string) (events.APIGatewayProxyResponse, error) {
-	return events.APIGatewayProxyResponse{
-		StatusCode: statusCode,
-		Headers: map[string]string{
-			"Content-Type": "application/json",
-		},
-		Body: fmt.Sprintf(`{"error":"%s"}`, message),
 	}, nil
 }
