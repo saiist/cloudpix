@@ -48,14 +48,50 @@ update-tags-code:
 	  --function-name cloudpix-tags \
 	  --image-uri $(ECR_REPO):latest
 
-# APIのテスト (Base64形式での画像アップロード)
+# 認証処理を含むアップロードテスト
 test-upload:
 	$(eval API_URL := $(call tf_output,api_url))
-	# サンプルの小さなPNG画像をBase64エンコードしてアップロード
-	echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" > /tmp/test_base64.txt
-	curl -X POST $(API_URL) \
+	$(eval USER_POOL_ID := $(call tf_output,cognito_user_pool_id))
+	$(eval CLIENT_ID := $(call tf_output,cognito_client_id))
+	$(eval TEST_EMAIL := test@example.com)
+	$(eval TEST_PASSWORD := TestPassword123!)
+	
+	# テスト画像の準備
+	@echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" > /tmp/test_base64.txt
+	
+	@echo "1. ユーザー存在確認..."
+	@aws cognito-idp admin-get-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) > /dev/null 2>&1 || \
+	(echo "ユーザーが存在しません。新規作成します..." && \
+	aws cognito-idp admin-create-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
+	--user-attributes Name=email,Value=$(TEST_EMAIL) Name=email_verified,Value=true --temporary-password $(TEST_PASSWORD) > /dev/null && \
+	echo "パスワードを設定しています..." && \
+	aws cognito-idp admin-set-user-password --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
+	--password $(TEST_PASSWORD) --permanent > /dev/null && \
+	echo "ユーザー $(TEST_EMAIL) を作成しました" && \
+	echo "少し待機します..." && sleep 2)
+	
+	@echo "2. 認証トークンを取得しています..."
+	$(eval TOKEN := $(shell aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH --client-id $(CLIENT_ID) \
+	--auth-parameters USERNAME=$(TEST_EMAIL),PASSWORD=$(TEST_PASSWORD) 2>/dev/null | jq -r '.AuthenticationResult.IdToken'))
+	
+	@if [ "$(TOKEN)" = "null" ] || [ -z "$(TOKEN)" ]; then \
+		echo "トークン取得に失敗しました。もう一度試しています..."; \
+		sleep 3; \
+		TOKEN=$$(aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH --client-id $(CLIENT_ID) \
+		--auth-parameters USERNAME=$(TEST_EMAIL),PASSWORD=$(TEST_PASSWORD) | jq -r '.AuthenticationResult.IdToken'); \
+		if [ "$$TOKEN" = "null" ] || [ -z "$$TOKEN" ]; then \
+			echo "再試行してもトークン取得に失敗しました"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "トークンを取得しました"; \
+	fi
+	
+	@echo "3. アップロードリクエストを送信しています..."
+	@curl -X POST $(API_URL) \
 	  -H "Content-Type: application/json" \
-	  -d "{\"fileName\":\"test.png\",\"contentType\":\"image/png\",\"data\":\"$(shell cat /tmp/test_base64.txt)\"}"
+	  -H "Authorization: Bearer $$TOKEN" \
+	  -d "{\"fileName\":\"test.png\",\"contentType\":\"image/png\",\"data\":\"$$(cat /tmp/test_base64.txt)\"}"
 
 # 画像一覧のテスト
 test-list:
