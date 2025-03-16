@@ -30,3 +30,9 @@ variable "lambda_timeout" {
   type        = number
   default     = 30
 }
+
+variable "app_frontend_url" {
+  description = "フロントエンドアプリケーションのURL"
+  type        = string
+  default     = "https://dev.cloudpix.example.com"
+}

@@ -1,0 +1,16 @@
+# terraform.tfvars.example
+# このファイルをterraform.tfvarsとしてコピーし、適切な値に編集してください
+
+# AWSリージョン
+aws_region = "ap-northeast-1"
+
+# アプリケーション設定
+app_name = "cloudpix"
+environment = "dev"  # dev, staging, prod
+
+# フロントエンドURL（開発環境の例）
+app_frontend_url = "https://dev.cloudpix.example.com"
+
+# Lambda設定
+lambda_memory_size = 128  # MB
+lambda_timeout = 30  # 秒

@@ -45,3 +45,19 @@ output "tags_api_url" {
   value       = "${aws_api_gateway_stage.dev.invoke_url}/tags"
   description = "タグ管理APIのエンドポイントURL"
 }
+
+# 認証関連の情報
+output "cognito_user_pool_id" {
+  value       = aws_cognito_user_pool.cloudpix_users.id
+  description = "Cognitoユーザープールのid"
+}
+
+output "cognito_client_id" {
+  value       = aws_cognito_user_pool_client.cloudpix_client.id
+  description = "Cognitoアプリクライアントid"
+}
+
+output "cognito_domain" {
+  value       = "https://${aws_cognito_user_pool_domain.cloudpix_domain.domain}.auth.${var.aws_region}.amazoncognito.com"
+  description = "Cognito ホストされたUIドメイン"
+}

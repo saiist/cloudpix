@@ -53,6 +53,8 @@ resource "aws_lambda_function" "cloudpix_tags" {
     variables = {
       TAGS_TABLE_NAME     = aws_dynamodb_table.cloudpix_tags.name
       METADATA_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
+      USER_POOL_ID        = aws_cognito_user_pool.cloudpix_users.id
+      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.cloudpix_client.id
     }
   }
 
@@ -83,7 +85,8 @@ resource "aws_api_gateway_method" "tags_get" {
   rest_api_id   = aws_api_gateway_rest_api.cloudpix_api.id
   resource_id   = aws_api_gateway_resource.tags.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cloudpix_cognito_authorizer.id
 }
 
 # POST /tags メソッド - タグの追加
@@ -91,7 +94,8 @@ resource "aws_api_gateway_method" "tags_post" {
   rest_api_id   = aws_api_gateway_rest_api.cloudpix_api.id
   resource_id   = aws_api_gateway_resource.tags.id
   http_method   = "POST"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cloudpix_cognito_authorizer.id
 }
 
 # GET /tags/{imageId} メソッド - 画像のタグ取得
@@ -99,7 +103,8 @@ resource "aws_api_gateway_method" "tags_image_get" {
   rest_api_id   = aws_api_gateway_rest_api.cloudpix_api.id
   resource_id   = aws_api_gateway_resource.tags_image.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cloudpix_cognito_authorizer.id
 }
 
 # DELETE /tags/{imageId} メソッド - 画像のタグ削除
@@ -107,7 +112,8 @@ resource "aws_api_gateway_method" "tags_image_delete" {
   rest_api_id   = aws_api_gateway_rest_api.cloudpix_api.id
   resource_id   = aws_api_gateway_resource.tags_image.id
   http_method   = "DELETE"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cloudpix_cognito_authorizer.id
 }
 
 # GET /tags との統合

@@ -12,6 +12,17 @@ resource "aws_api_gateway_rest_api" "cloudpix_api" {
 }
 
 ################################
+# API Gateway - Cognito Authorizer
+################################
+resource "aws_api_gateway_authorizer" "cloudpix_cognito_authorizer" {
+  name            = "${var.app_name}-cognito-authorizer"
+  rest_api_id     = aws_api_gateway_rest_api.cloudpix_api.id
+  type            = "COGNITO_USER_POOLS"
+  provider_arns   = [aws_cognito_user_pool.cloudpix_users.arn]
+  identity_source = "method.request.header.Authorization"
+}
+
+################################
 # API Gateway - Upload Endpoint
 ################################
 # /upload リソースの作成
@@ -26,7 +37,8 @@ resource "aws_api_gateway_method" "upload_post" {
   rest_api_id   = aws_api_gateway_rest_api.cloudpix_api.id
   resource_id   = aws_api_gateway_resource.upload.id
   http_method   = "POST"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cloudpix_cognito_authorizer.id
 }
 
 # Lambda関数との統合
@@ -65,7 +77,8 @@ resource "aws_api_gateway_method" "list_get" {
   rest_api_id   = aws_api_gateway_rest_api.cloudpix_api.id
   resource_id   = aws_api_gateway_resource.list.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cloudpix_cognito_authorizer.id
 }
 
 # Lambda関数との統合

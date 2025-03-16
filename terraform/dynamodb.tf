@@ -17,10 +17,22 @@ resource "aws_dynamodb_table" "cloudpix_metadata" {
     type = "S"
   }
 
+  attribute {
+    name = "Owner"
+    type = "S"
+  }
+
   # UploadDateによるクエリ用のGSI
   global_secondary_index {
     name            = "UploadDateIndex"
     hash_key        = "UploadDate"
+    projection_type = "ALL"
+  }
+
+  # Ownerによるクエリ用のGSI
+  global_secondary_index {
+    name            = "OwnerIndex"
+    hash_key        = "Owner"
     projection_type = "ALL"
   }
 

@@ -1,4 +1,4 @@
-.PHONY: deploy update-code test test-list test-list-date tf-init tf-plan tf-apply tf-destroy tf-validate tf-fmt tf-clean
+.PHONY: deploy update-code test test-list test-list-date tf-init tf-plan tf-apply tf-destroy tf-validate tf-fmt tf-clean recreate tf-init-env
 
 # Terraformのディレクトリ
 TF_DIR = terraform
@@ -7,6 +7,9 @@ TF_CMD = cd $(TF_DIR) && terraform
 
 # 完全デプロイ（Terraformを含む）
 deploy: tf-apply
+
+# リソースを完全に再作成（destroyしてからapply）
+recreate: tf-destroy tf-apply
 
 # Terraformの出力を取得するヘルパー関数
 define tf_output
@@ -126,3 +129,18 @@ tf-clean:
 	rm -rf $(TF_DIR)/.terraform/
 	rm -f $(TF_DIR)/.terraform.lock.hcl
 	rm -f $(TF_DIR)/terraform.tfstate*
+
+# 環境設定ファイルの初期化（サンプルをコピー）
+tf-init-env:
+	@if [ ! -f $(TF_DIR)/terraform.tfvars ]; then \
+		if [ -f $(TF_DIR)/terraform.tfvars.example ]; then \
+			cp $(TF_DIR)/terraform.tfvars.example $(TF_DIR)/terraform.tfvars; \
+			echo "terraform.tfvars created from example. Please edit the file with your settings."; \
+		else \
+			echo "Error: $(TF_DIR)/terraform.tfvars.example not found."; \
+			echo "Please create terraform.tfvars.example first."; \
+			exit 1; \
+		fi; \
+	else \
+		echo "terraform.tfvars already exists."; \
+	fi
