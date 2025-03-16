@@ -155,39 +155,62 @@ cloudpix/
 # インフラのデプロイ
 make tf-apply
 
-# APIのテスト - 画像アップロード
-make test
+# アプリケーションテスト関連
 
-# APIのテスト - 画像一覧取得
+## 単体テスト実行
+make go-test
+
+## 詳細出力付きの単体テスト実行
+make go-test-verbose
+
+## テストカバレッジレポートの生成
+make go-test-coverage
+
+# APIのテスト
+
+## 認証処理を含む画像アップロードテスト
+make test-upload
+
+## 画像一覧取得テスト
 make test-list
 
-# APIのテスト - 特定の日付の画像一覧取得
+## 特定の日付の画像一覧取得テスト
 make test-list-date
 
-# APIのテスト - タグ追加
+## タグ追加テスト
 make test-add-tags
 
-# APIのテスト - 画像のタグ取得
+## 画像のタグ取得テスト
 make test-get-image-tags
 
-# APIのテスト - すべてのタグリスト取得
+## すべてのタグリスト取得テスト
 make test-list-tags
 
-# APIのテスト - タグによる画像検索
+## タグによる画像検索テスト
 make test-search-by-tag
 
-# アップロード関数のコード更新
+# Lambda関数コード更新
+
+## アップロード関数のコード更新
 make update-code
 
-# リスト関数のコード更新
+## リスト関数のコード更新
 make update-list-code
 
-# サムネイル関数のコード更新
+## サムネイル関数のコード更新
 make update-thumbnail-code
 
-# タグ管理関数のコード更新
+## タグ管理関数のコード更新
 make update-tags-code
 ```
+
+アプリケーションのビルドとテストには以下のコマンドを使用します：
+
+1. **単体テスト実行**: `make go-test` - すべての単体テストをシンプルに実行します
+2. **詳細テスト実行**: `make go-test-verbose` - テスト実行の詳細なログを表示します
+3. **カバレッジ測定**: `make go-test-coverage` - テストカバレッジを測定しHTMLレポートを作成します
+
+APIテストは各機能ごとに用意されており、実際のAWS環境に対して行われます。
 
 ## 今後の拡張予定
 
