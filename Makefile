@@ -1,4 +1,4 @@
-.PHONY: deploy update-code test test-list test-list-date tf-init tf-plan tf-apply tf-destroy tf-validate tf-fmt tf-clean recreate tf-init-env
+.PHONY: deploy update-code test test-list test-list-date tf-init tf-plan tf-apply tf-destroy tf-validate tf-fmt tf-clean recreate tf-init-env go-test go-test-verbose go-test-coverage
 
 # Terraformのディレクトリ
 TF_DIR = terraform
@@ -237,3 +237,23 @@ test-search-by-tag:
 	echo "タグ: $$TAG による画像検索結果:" && \
 	curl -s -X GET "$(LIST_API_URL)?tag=$$TAG" \
 	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
+
+## -- Goテスト関連コマンド -- ##
+
+# 基本的な単体テスト実行
+go-test:
+	@echo "単体テストを実行しています..."
+	@go test ./internal/...
+
+# 詳細出力ありの単体テスト実行
+go-test-verbose:
+	@echo "詳細出力ありで単体テストを実行しています..."
+	@go test -v ./internal/...
+
+# カバレッジレポート付きのテスト実行
+go-test-coverage:
+	@echo "テストカバレッジを計測しています..."
+	@go test ./internal/... -coverprofile=coverage.out
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "coverage.htmlにカバレッジレポートを出力しました"
+	@echo "ブラウザでcoverage.htmlを開いてカバレッジを確認してください"

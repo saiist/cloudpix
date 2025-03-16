@@ -34,6 +34,7 @@ terraform.rc
 *.test
 
 # カバレッジツールの出力
+coverage.html
 *.out
 *.prof
 
