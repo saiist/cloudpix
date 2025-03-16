@@ -16,142 +16,6 @@ define tf_output
 $(shell $(TF_CMD) output -raw $(1))
 endef
 
-# アップロードのコードのみを更新
-update-code:
-	$(eval ECR_REPO := $(call tf_output,ecr_repository_url))
-	@echo "アップロードコードを更新しています..."
-	@./build_and_push.sh $(ECR_REPO) ./cmd/upload/main.go
-	@aws lambda update-function-code \
-	  --function-name cloudpix-upload \
-	  --image-uri $(ECR_REPO):latest
-
-# リストのコードを更新
-update-list-code:
-	$(eval ECR_REPO := $(call tf_output,ecr_list_repository_url))
-	@echo "リストコードを更新しています..."
-	@./build_and_push.sh $(ECR_REPO) ./cmd/list/main.go
-	@aws lambda update-function-code \
-	  --function-name cloudpix-list \
-	  --image-uri $(ECR_REPO):latest
-
-# サムネイル生成コードの更新
-update-thumbnail-code:
-	$(eval ECR_REPO := $(call tf_output,ecr_thumbnail_repository_url))
-	@echo "サムネイルコードを更新しています..."
-	@./build_and_push.sh $(ECR_REPO) ./cmd/thumbnail/main.go
-	@aws lambda update-function-code \
-	  --function-name cloudpix-thumbnail \
-	  --image-uri $(ECR_REPO):latest
-
-# タグ機能のコード更新
-update-tags-code:
-	$(eval ECR_REPO := $(call tf_output,ecr_tags_repository_url))
-	@echo "タグ機能コードを更新しています..."
-	@./build_and_push.sh $(ECR_REPO) ./cmd/tags/main.go
-	@aws lambda update-function-code \
-	  --function-name cloudpix-tags \
-	  --image-uri $(ECR_REPO):latest
-
-# 認証処理を含むアップロードテスト
-test-upload:
-	$(eval API_URL := $(call tf_output,api_url))
-	$(eval USER_POOL_ID := $(call tf_output,cognito_user_pool_id))
-	$(eval CLIENT_ID := $(call tf_output,cognito_client_id))
-	$(eval TEST_EMAIL := test@example.com)
-	$(eval TEST_PASSWORD := TestPassword123!)
-	
-	# テスト画像の準備
-	@echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" > /tmp/test_base64.txt
-	
-	@echo "1. ユーザー存在確認と作成..."
-	@# ユーザーの存在確認
-	@USER_EXISTS=false; \
-	if aws cognito-idp admin-get-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) > /dev/null 2>&1; then \
-		echo "ユーザーが既に存在します"; \
-		USER_EXISTS=true; \
-	else \
-		echo "ユーザーを作成しています..."; \
-		aws cognito-idp admin-create-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
-		--user-attributes Name=email,Value=$(TEST_EMAIL) Name=email_verified,Value=true --temporary-password $(TEST_PASSWORD) > /dev/null && \
-		aws cognito-idp admin-set-user-password --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
-		--password $(TEST_PASSWORD) --permanent > /dev/null && \
-		echo "ユーザーを作成しました。認証が有効になるまで10秒待機します..." && \
-		sleep 10; \
-	fi
-	
-	@echo "2. 認証トークンを取得しています..."
-	@# 最大3回まで認証を試行
-	@for i in 1 2 3; do \
-		aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH --client-id $(CLIENT_ID) \
-		--auth-parameters USERNAME=$(TEST_EMAIL),PASSWORD=$(TEST_PASSWORD) > /tmp/auth_response.json 2>/dev/null || true; \
-		TOKEN=`cat /tmp/auth_response.json 2>/dev/null | jq -r '.AuthenticationResult.IdToken' 2>/dev/null || echo ""`; \
-		if [ ! -z "$$TOKEN" ] && [ "$$TOKEN" != "null" ]; then \
-			echo "トークンを取得しました"; \
-			break; \
-		else \
-			echo "認証試行 $$i 回目が失敗しました。再試行します..."; \
-			sleep 3; \
-		fi; \
-		if [ $$i -eq 3 ]; then \
-			echo "認証トークンの取得に失敗しました"; \
-			exit 1; \
-		fi; \
-	done
-	
-	@echo "3. アップロードリクエストを送信しています..."
-	@TOKEN=`cat /tmp/auth_response.json | jq -r '.AuthenticationResult.IdToken'`
-	@curl -s -X POST $(API_URL) \
-	  -H "Content-Type: application/json" \
-	  -H "Authorization: Bearer $$TOKEN" \
-	  -d "{\"fileName\":\"test.png\",\"contentType\":\"image/png\",\"data\":\"`cat /tmp/test_base64.txt`\"}" | jq .
-
-# 画像一覧のテスト
-test-list:
-	$(eval LIST_API_URL := $(call tf_output,list_api_url))
-	@echo "画像一覧を取得しています..."
-	@curl -s -X GET $(LIST_API_URL) | jq .
-	
-# 特定の日付の画像一覧のテスト
-test-list-date:
-	$(eval LIST_API_URL := $(call tf_output,list_api_url))
-	$(eval TODAY := $(shell date +%Y-%m-%d))
-	@echo "日付: $(TODAY) の画像一覧を取得しています..."
-	@curl -s -X GET "$(LIST_API_URL)?date=$(TODAY)" | jq .
-
-# ヘルパー関数 - 最初の画像IDを取得
-define get_first_image_id
-$(shell curl -s $(call tf_output,list_api_url) | jq -r '.images[0].imageId')
-endef
-
-# タグ追加のテスト
-test-add-tags:
-	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
-	$(eval IMAGE_ID := $(call get_first_image_id))
-	@echo "画像ID: $(IMAGE_ID) にタグを追加しています..."
-	@curl -s -X POST $(TAGS_API_URL) \
-	  -H "Content-Type: application/json" \
-	  -d "{\"imageId\":\"$(IMAGE_ID)\",\"tags\":[\"nature\",\"landscape\",\"vacation\"]}" | jq .
-
-# 画像のタグ取得テスト
-test-get-image-tags:
-	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
-	$(eval IMAGE_ID := $(call get_first_image_id))
-	@echo "画像ID: $(IMAGE_ID) のタグを取得しています..."
-	@curl -s -X GET $(TAGS_API_URL)/$(IMAGE_ID) | jq .
-
-# すべてのタグのリスト取得テスト
-test-list-tags:
-	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
-	@echo "すべてのタグを取得しています..."
-	@curl -s -X GET $(TAGS_API_URL) | jq .
-
-# タグによる画像検索テスト
-test-search-by-tag:
-	$(eval LIST_API_URL := $(call tf_output,list_api_url))
-	@echo "検索するタグを入力してください: " && read TAG && \
-	echo "タグ: $${TAG} による画像検索結果:" && \
-	curl -s -X GET "$(LIST_API_URL)?tag=$${TAG}" | jq .
-
 # Terraformの初期化
 tf-init:
 	@echo "Terraformを初期化しています..."
@@ -203,3 +67,173 @@ tf-init-env:
 	else \
 		echo "terraform.tfvars already exists."; \
 	fi
+
+# アップロードのコードのみを更新
+update-code:
+	$(eval ECR_REPO := $(call tf_output,ecr_repository_url))
+	@echo "アップロードコードを更新しています..."
+	@./build_and_push.sh $(ECR_REPO) ./cmd/upload/main.go
+	@aws lambda update-function-code \
+	  --function-name cloudpix-upload \
+	  --image-uri $(ECR_REPO):latest
+
+# リストのコードを更新
+update-list-code:
+	$(eval ECR_REPO := $(call tf_output,ecr_list_repository_url))
+	@echo "リストコードを更新しています..."
+	@./build_and_push.sh $(ECR_REPO) ./cmd/list/main.go
+	@aws lambda update-function-code \
+	  --function-name cloudpix-list \
+	  --image-uri $(ECR_REPO):latest
+
+# サムネイル生成コードの更新
+update-thumbnail-code:
+	$(eval ECR_REPO := $(call tf_output,ecr_thumbnail_repository_url))
+	@echo "サムネイルコードを更新しています..."
+	@./build_and_push.sh $(ECR_REPO) ./cmd/thumbnail/main.go
+	@aws lambda update-function-code \
+	  --function-name cloudpix-thumbnail \
+	  --image-uri $(ECR_REPO):latest
+
+# タグ機能のコード更新
+update-tags-code:
+	$(eval ECR_REPO := $(call tf_output,ecr_tags_repository_url))
+	@echo "タグ機能コードを更新しています..."
+	@./build_and_push.sh $(ECR_REPO) ./cmd/tags/main.go
+	@aws lambda update-function-code \
+	  --function-name cloudpix-tags \
+	  --image-uri $(ECR_REPO):latest
+
+## -- テスト用コマンド群 --  ##
+
+# 共有の認証トークン取得関数
+define get_auth_token
+$(eval USER_POOL_ID := $(call tf_output,cognito_user_pool_id))
+$(eval CLIENT_ID := $(call tf_output,cognito_client_id))
+$(eval TEST_EMAIL := test@example.com)
+$(eval TEST_PASSWORD := TestPassword123!)
+
+@echo "認証処理を実行中..."
+@# ユーザーの存在確認と作成（必要な場合）
+@aws cognito-idp admin-get-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) > /dev/null 2>&1 || \
+(aws cognito-idp admin-create-user --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
+--user-attributes Name=email,Value=$(TEST_EMAIL) Name=email_verified,Value=true --temporary-password $(TEST_PASSWORD) > /dev/null && \
+aws cognito-idp admin-set-user-password --user-pool-id $(USER_POOL_ID) --username $(TEST_EMAIL) \
+--password $(TEST_PASSWORD) --permanent > /dev/null && sleep 5)
+
+@# 認証トークン取得
+@aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH --client-id $(CLIENT_ID) \
+--auth-parameters USERNAME=$(TEST_EMAIL),PASSWORD=$(TEST_PASSWORD) > /tmp/auth_response.json 2>/dev/null
+@TOKEN=`cat /tmp/auth_response.json | jq -r '.AuthenticationResult.IdToken' 2>/dev/null || echo ""`; \
+echo "AUTH_TOKEN=$$TOKEN" > /tmp/auth_env.sh
+endef
+
+# 認証処理を含むアップロードテスト
+test-upload:
+	$(eval API_URL := $(call tf_output,api_url))
+	# テスト画像の準備
+	@echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" > /tmp/test_base64.txt
+	
+	# 認証トークン取得
+	$(call get_auth_token)
+	
+	@echo "アップロードリクエストを送信しています..."
+	@. /tmp/auth_env.sh && \
+	curl -s -X POST $(API_URL) \
+	  -H "Content-Type: application/json" \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" \
+	  -d "{\"fileName\":\"test.png\",\"contentType\":\"image/png\",\"data\":\"`cat /tmp/test_base64.txt`\"}" | jq .
+
+# 画像一覧のテスト（認証付き）
+test-list:
+	$(eval LIST_API_URL := $(call tf_output,list_api_url))
+	
+	# 認証トークン取得
+	$(call get_auth_token)
+	
+	@echo "画像一覧を取得しています..."
+	@. /tmp/auth_env.sh && \
+	curl -s -X GET $(LIST_API_URL) \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
+	
+# 特定の日付の画像一覧のテスト（認証付き）
+test-list-date:
+	$(eval LIST_API_URL := $(call tf_output,list_api_url))
+	$(eval TODAY := $(shell date +%Y-%m-%d))
+	
+	# 認証トークン取得
+	$(call get_auth_token)
+	
+	@echo "日付: $(TODAY) の画像一覧を取得しています..."
+	@. /tmp/auth_env.sh && \
+	curl -s -X GET "$(LIST_API_URL)?date=$(TODAY)" \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
+
+# タグ追加のテスト（認証付き）
+test-add-tags:
+	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
+	
+	# 認証トークン取得
+	$(call get_auth_token)
+	
+	# 画像IDの取得
+	@echo "画像一覧を取得して最初の画像IDを抽出します..."
+	@. /tmp/auth_env.sh && \
+	curl -s -X GET $(call tf_output,list_api_url) \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" > /tmp/image_list.json
+	@IMAGE_ID=`cat /tmp/image_list.json | jq -r '.images[0].imageId'` && \
+	echo "IMAGE_ID=$$IMAGE_ID" > /tmp/image_env.sh
+	
+	@echo "タグを追加しています..."
+	@. /tmp/auth_env.sh && . /tmp/image_env.sh && \
+	echo "画像ID: $$IMAGE_ID" && \
+	curl -s -X POST $(TAGS_API_URL) \
+	  -H "Content-Type: application/json" \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" \
+	  -d "{\"imageId\":\"$$IMAGE_ID\",\"tags\":[\"nature\",\"landscape\",\"vacation\"]}" | jq .
+
+# 画像のタグ取得テスト（認証付き）
+test-get-image-tags:
+	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
+	
+	# 認証トークン取得
+	$(call get_auth_token)
+	
+	# 画像IDの取得
+	@echo "画像一覧を取得して最初の画像IDを抽出します..."
+	@. /tmp/auth_env.sh && \
+	curl -s -X GET $(call tf_output,list_api_url) \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" > /tmp/image_list.json
+	@IMAGE_ID=`cat /tmp/image_list.json | jq -r '.images[0].imageId'` && \
+	echo "IMAGE_ID=$$IMAGE_ID" > /tmp/image_env.sh
+	
+	@echo "タグを取得しています..."
+	@. /tmp/auth_env.sh && . /tmp/image_env.sh && \
+	echo "画像ID: $$IMAGE_ID" && \
+	curl -s -X GET $(TAGS_API_URL)/$$IMAGE_ID \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
+
+# すべてのタグのリスト取得テスト（認証付き）
+test-list-tags:
+	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
+	
+	# 認証トークン取得
+	$(call get_auth_token)
+	
+	@echo "すべてのタグを取得しています..."
+	@. /tmp/auth_env.sh && \
+	curl -s -X GET $(TAGS_API_URL) \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
+
+# タグによる画像検索テスト（認証付き）
+test-search-by-tag:
+	$(eval LIST_API_URL := $(call tf_output,list_api_url))
+	
+	# 認証トークン取得
+	$(call get_auth_token)
+	
+	@echo "検索するタグを入力してください: " && read TAG && \
+	. /tmp/auth_env.sh && \
+	echo "タグ: $$TAG による画像検索結果:" && \
+	curl -s -X GET "$(LIST_API_URL)?tag=$$TAG" \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
