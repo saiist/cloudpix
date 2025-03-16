@@ -1,4 +1,4 @@
-.PHONY: deploy update-code test test-list test-list-date tf-init tf-plan tf-apply tf-destroy tf-validate tf-fmt tf-clean recreate tf-init-env go-test go-test-verbose go-test-coverage
+.PHONY: deploy update-code api-test api-test-list api-test-list-date tf-init tf-plan tf-apply tf-destroy tf-validate tf-fmt tf-clean recreate tf-init-env go-test go-test-verbose go-test-coverage
 
 # Terraformのディレクトリ
 TF_DIR = terraform
@@ -129,7 +129,7 @@ echo "AUTH_TOKEN=$$TOKEN" > /tmp/auth_env.sh
 endef
 
 # 認証処理を含むアップロードテスト
-test-upload:
+api-test-upload:
 	$(eval API_URL := $(call tf_output,api_url))
 	# テスト画像の準備
 	@echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" > /tmp/test_base64.txt
@@ -145,7 +145,7 @@ test-upload:
 	  -d "{\"fileName\":\"test.png\",\"contentType\":\"image/png\",\"data\":\"`cat /tmp/test_base64.txt`\"}" | jq .
 
 # 画像一覧のテスト（認証付き）
-test-list:
+api-test-list:
 	$(eval LIST_API_URL := $(call tf_output,list_api_url))
 	
 	# 認証トークン取得
@@ -157,7 +157,7 @@ test-list:
 	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
 	
 # 特定の日付の画像一覧のテスト（認証付き）
-test-list-date:
+api-test-list-date:
 	$(eval LIST_API_URL := $(call tf_output,list_api_url))
 	$(eval TODAY := $(shell date +%Y-%m-%d))
 	
@@ -170,7 +170,7 @@ test-list-date:
 	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
 
 # タグ追加のテスト（認証付き）
-test-add-tags:
+api-test-add-tags:
 	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
 	
 	# 認証トークン取得
@@ -193,7 +193,7 @@ test-add-tags:
 	  -d "{\"imageId\":\"$$IMAGE_ID\",\"tags\":[\"nature\",\"landscape\",\"vacation\"]}" | jq .
 
 # 画像のタグ取得テスト（認証付き）
-test-get-image-tags:
+api-test-get-image-tags:
 	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
 	
 	# 認証トークン取得
@@ -214,7 +214,7 @@ test-get-image-tags:
 	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
 
 # すべてのタグのリスト取得テスト（認証付き）
-test-list-tags:
+api-test-list-tags:
 	$(eval TAGS_API_URL := $(call tf_output,tags_api_url))
 	
 	# 認証トークン取得
@@ -226,7 +226,7 @@ test-list-tags:
 	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
 
 # タグによる画像検索テスト（認証付き）
-test-search-by-tag:
+api-test-search-by-tag:
 	$(eval LIST_API_URL := $(call tf_output,list_api_url))
 	
 	# 認証トークン取得
