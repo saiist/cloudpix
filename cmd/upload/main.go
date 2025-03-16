@@ -43,7 +43,7 @@ func main() {
 	uploadUsecase := usecase.NewUploadUsecase(storageRepo, metadataRepo, cfg.S3BucketName)
 
 	// ミドルウェアの作成
-	authMiddleware := middleware.CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.UserPoolID)
+	authMiddleware := middleware.CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.ClientID)
 
 	// ハンドラのセットアップ
 	uploadHandler := handler.NewUploadHandler(uploadUsecase, authMiddleware)
