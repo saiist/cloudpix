@@ -1,6 +1,8 @@
 module cloudpix
 
-go 1.20
+go 1.22
+
+toolchain go1.23.4
 
 require (
 	github.com/aws/aws-lambda-go v1.47.0
@@ -9,6 +11,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.1
 	github.com/google/uuid v1.6.0
 	github.com/lestrrat-go/jwx v1.2.30
+	go.uber.org/mock v0.5.0
 )
 
 require (
