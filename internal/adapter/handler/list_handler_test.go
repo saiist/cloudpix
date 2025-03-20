@@ -2,7 +2,6 @@ package handler
 
 import (
 	"cloudpix/internal/domain/model"
-	"cloudpix/internal/mocks/middleware"
 	"cloudpix/internal/mocks/repository"
 	"cloudpix/internal/usecase"
 	"context"
@@ -19,7 +18,7 @@ func TestListHandler_Handle(t *testing.T) {
 	// テストケース定義
 	testCases := []struct {
 		name           string
-		setupMocks     func(*repository.MockMetadataRepository, *middleware.MockAuthMiddleware)
+		setupMocks     func(*repository.MockMetadataRepository)
 		request        events.APIGatewayProxyRequest
 		expectedStatus int
 		expectedCount  int
@@ -27,16 +26,7 @@ func TestListHandler_Handle(t *testing.T) {
 	}{
 		{
 			name: "すべての画像を取得",
-			setupMocks: func(mockRepo *repository.MockMetadataRepository, mockAuth *middleware.MockAuthMiddleware) {
-				// 認証ミドルウェアのモック設定
-				userInfo := &model.UserInfo{
-					UserID:  "test-user",
-					IsAdmin: true,
-				}
-				mockAuth.EXPECT().
-					Process(gomock.Any(), gomock.Any()).
-					Return(context.Background(), userInfo, events.APIGatewayProxyResponse{}, nil)
-
+			setupMocks: func(mockRepo *repository.MockMetadataRepository) {
 				// リポジトリのモック設定
 				mockRepo.EXPECT().
 					Find(gomock.Any()).
@@ -71,16 +61,7 @@ func TestListHandler_Handle(t *testing.T) {
 		},
 		{
 			name: "日付でフィルターされた画像を取得",
-			setupMocks: func(mockRepo *repository.MockMetadataRepository, mockAuth *middleware.MockAuthMiddleware) {
-				// 認証ミドルウェアのモック設定
-				userInfo := &model.UserInfo{
-					UserID:  "test-user",
-					IsAdmin: false,
-				}
-				mockAuth.EXPECT().
-					Process(gomock.Any(), gomock.Any()).
-					Return(context.Background(), userInfo, events.APIGatewayProxyResponse{}, nil)
-
+			setupMocks: func(mockRepo *repository.MockMetadataRepository) {
 				// リポジトリのモック設定
 				mockRepo.EXPECT().
 					FindByDate(gomock.Any(), "2025-03-01").
@@ -107,16 +88,7 @@ func TestListHandler_Handle(t *testing.T) {
 		},
 		{
 			name: "リポジトリエラー",
-			setupMocks: func(mockRepo *repository.MockMetadataRepository, mockAuth *middleware.MockAuthMiddleware) {
-				// 認証ミドルウェアのモック設定
-				userInfo := &model.UserInfo{
-					UserID:  "test-user",
-					IsAdmin: true,
-				}
-				mockAuth.EXPECT().
-					Process(gomock.Any(), gomock.Any()).
-					Return(context.Background(), userInfo, events.APIGatewayProxyResponse{}, nil)
-
+			setupMocks: func(mockRepo *repository.MockMetadataRepository) {
 				// リポジトリのモック設定（エラーを返す）
 				mockRepo.EXPECT().
 					Find(gomock.Any()).
@@ -130,21 +102,6 @@ func TestListHandler_Handle(t *testing.T) {
 			expectedCount:  0,
 			expectError:    false,
 		},
-		{
-			name: "認証エラー",
-			setupMocks: func(mockRepo *repository.MockMetadataRepository, mockAuth *middleware.MockAuthMiddleware) {
-				// 認証エラーのシミュレーション
-				mockAuth.EXPECT().
-					Process(gomock.Any(), gomock.Any()).
-					Return(nil, nil, events.APIGatewayProxyResponse{StatusCode: 401}, errors.New("unauthorized"))
-			},
-			request: events.APIGatewayProxyRequest{
-				HTTPMethod: "GET",
-				Path:       "/images",
-			},
-			expectedStatus: 401,
-			expectError:    true,
-		},
 	}
 
 	// テストケースを実行
@@ -155,10 +112,9 @@ func TestListHandler_Handle(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockRepo := repository.NewMockMetadataRepository(ctrl)
-			mockAuth := middleware.NewMockAuthMiddleware(ctrl)
 
 			// モックの期待値を設定
-			tc.setupMocks(mockRepo, mockAuth)
+			tc.setupMocks(mockRepo)
 
 			// ハンドラを作成
 			metadataUsecase := usecase.NewMetadataUsecase(mockRepo)

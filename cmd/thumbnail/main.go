@@ -5,6 +5,7 @@ import (
 
 	"cloudpix/config"
 	"cloudpix/internal/adapter/handler"
+	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/infrastructure/imaging"
 	"cloudpix/internal/infrastructure/persistence"
 	"cloudpix/internal/infrastructure/storage"
@@ -48,9 +49,22 @@ func main() {
 	// ユースケースのセットアップ
 	thumbnailUsecase := usecase.NewThumbnailUsecase(thumbnailRepo, storageRepo, imageService, cfg.AWSRegion, thumbnailSize)
 
+	// ミドルウェア設定の作成
+	middlewareCfg := middleware.NewDefaultMiddlewareConfig()
+	middlewareCfg.AWSRegion = cfg.AWSRegion
+	middlewareCfg.ServiceName = "CloudPix"
+	middlewareCfg.OperationName = "GenerateThumbnail"
+	middlewareCfg.FunctionName = "ThumbnailLambda"
+
+	// ハンドラーファクトリの作成
+	handlerFactory := middleware.NewHandlerFactory(middlewareCfg).WithAWSSession(sess)
+
 	// ハンドラのセットアップ
 	thumbnailHandler := handler.NewThumbnailHandler(thumbnailUsecase)
 
+	// ミドルウェアを適用したS3イベントハンドラーを作成
+	wrappedHandler := handlerFactory.WrapS3EventHandler(thumbnailHandler.Handle)
+
 	// Lambda関数のスタート
-	lambda.Start(thumbnailHandler.Handle)
+	lambda.Start(wrappedHandler)
 }
