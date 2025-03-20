@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/domain/model"
 	"cloudpix/internal/usecase"
 	"context"
@@ -14,25 +13,16 @@ import (
 
 type ListHandler struct {
 	metadataUsecase *usecase.MetadataUsecase
-	authMiddleware  middleware.AuthMiddleware
 }
 
-func NewListHandler(metadataUsecase *usecase.MetadataUsecase, authMiddleware middleware.AuthMiddleware) *ListHandler {
+func NewListHandler(metadataUsecase *usecase.MetadataUsecase) *ListHandler {
 	return &ListHandler{
 		metadataUsecase: metadataUsecase,
-		authMiddleware:  authMiddleware,
 	}
 }
 
-// Handle はAPIリクエストを処理する
+// Handle はAPIリクエストを処理する（ミドルウェア適用済み）
 func (h *ListHandler) Handle(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// 認証ミドルウェアを適用
-	handlerWithAuth := WithAuth(h.authMiddleware, h.handleList)
-	return handlerWithAuth(ctx, request)
-}
-
-// handleList は認証なしの実際のハンドラー処理
-func (h *ListHandler) handleList(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	log.Printf("Processing request: %s %s", request.HTTPMethod, request.Path)
 
 	// クエリパラメータからフィルターを取得
@@ -51,7 +41,7 @@ func (h *ListHandler) handleList(ctx context.Context, request events.APIGatewayP
 
 	if err != nil {
 		log.Printf("Error listing: %s", err)
-		return h.errorResponse(500, fmt.Sprintf("Failed to retrieve tags: %s", err))
+		return h.errorResponse(500, fmt.Sprintf("Failed to retrieve images: %s", err))
 	}
 
 	// 成功レスポンスを返す

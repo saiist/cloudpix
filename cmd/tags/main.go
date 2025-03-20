@@ -37,12 +37,25 @@ func main() {
 	// ユースケースのセットアップ
 	tagUsecase := usecase.NewTagUsecase(tagRepo)
 
-	// ミドルウェアの作成
-	authMiddleware := middleware.CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.ClientID)
-
 	// ハンドラのセットアップ
-	tagHandler := handler.NewTagHandler(tagUsecase, authMiddleware)
+	tagHandler := handler.NewTagHandler(tagUsecase)
+
+	// ミドルウェア設定の作成
+	middlewareCfg := middleware.NewDefaultMiddlewareConfig()
+	middlewareCfg.AWSRegion = cfg.AWSRegion
+	middlewareCfg.UserPoolID = cfg.UserPoolID
+	middlewareCfg.ClientID = cfg.ClientID
+	middlewareCfg.ServiceName = "CloudPix"
+	middlewareCfg.OperationName = "ListImages"
+	middlewareCfg.FunctionName = "ListLambda"
+
+	// ハンドラーファクトリの作成
+	handlerFactory := middleware.NewHandlerFactory(middlewareCfg).WithAWSSession(sess)
+
+	// ミドルウェアを適用したハンドラーを作成
+	wrappedHandler := handlerFactory.WrapAPIGatewayHandler(tagHandler.Handle)
 
 	// Lambda関数のスタート
-	lambda.Start(tagHandler.Handle)
+	lambda.Start(wrappedHandler)
+
 }

@@ -42,12 +42,24 @@ func main() {
 	// ユースケースのセットアップ
 	uploadUsecase := usecase.NewUploadUsecase(storageRepo, metadataRepo, cfg.S3BucketName)
 
-	// ミドルウェアの作成
-	authMiddleware := middleware.CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.ClientID)
-
 	// ハンドラのセットアップ
-	uploadHandler := handler.NewUploadHandler(uploadUsecase, authMiddleware)
+	uploadHandler := handler.NewUploadHandler(uploadUsecase)
+
+	// ミドルウェア設定の作成
+	middlewareCfg := middleware.NewDefaultMiddlewareConfig()
+	middlewareCfg.AWSRegion = cfg.AWSRegion
+	middlewareCfg.UserPoolID = cfg.UserPoolID
+	middlewareCfg.ClientID = cfg.ClientID
+	middlewareCfg.ServiceName = "CloudPix"
+	middlewareCfg.OperationName = "UploadImage"
+	middlewareCfg.FunctionName = "UploadLambda"
+
+	// ハンドラーファクトリの作成
+	handlerFactory := middleware.NewHandlerFactory(middlewareCfg).WithAWSSession(sess)
+
+	// ミドルウェアを適用したハンドラーを作成
+	wrappedHandler := handlerFactory.WrapAPIGatewayHandler(uploadHandler.Handle)
 
 	// Lambda関数のスタート
-	lambda.Start(uploadHandler.Handle)
+	lambda.Start(wrappedHandler)
 }

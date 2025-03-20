@@ -7,14 +7,15 @@ resource "aws_cloudwatch_log_group" "lambda_upload_logs" {
   name              = "/aws/lambda/${aws_lambda_function.cloudpix_upload.function_name}"
   retention_in_days = var.metrics_retention_days
 
-  # 既存のリソースをインポートするため、作成済みのリソースをスキップ
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes = [
-      # 自動作成されたリソースの属性を無視
-      name,
-    ]
-  }
+  # destroy できるようにコメントアウト
+  # # 既存のリソースをインポートするため、作成済みのリソースをスキップ
+  # lifecycle {
+  #   prevent_destroy = true
+  #   ignore_changes = [
+  #     # 自動作成されたリソースの属性を無視
+  #     name,
+  #   ]
+  # }
 
   tags = {
     Environment = var.environment
@@ -26,14 +27,15 @@ resource "aws_cloudwatch_log_group" "lambda_list_logs" {
   name              = "/aws/lambda/${aws_lambda_function.cloudpix_list.function_name}"
   retention_in_days = var.metrics_retention_days
 
-  # 既存のリソースをインポートするため、作成済みのリソースをスキップ
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes = [
-      # 自動作成されたリソースの属性を無視
-      name,
-    ]
-  }
+  # destroy できるようにコメントアウト
+  # # 既存のリソースをインポートするため、作成済みのリソースをスキップ
+  # lifecycle {
+  #   prevent_destroy = true
+  #   ignore_changes = [
+  #     # 自動作成されたリソースの属性を無視
+  #     name,
+  #   ]
+  # }
 
   tags = {
     Environment = var.environment
@@ -45,14 +47,15 @@ resource "aws_cloudwatch_log_group" "lambda_thumbnail_logs" {
   name              = "/aws/lambda/${aws_lambda_function.cloudpix_thumbnail.function_name}"
   retention_in_days = var.metrics_retention_days
 
-  # 既存のリソースをインポートするため、作成済みのリソースをスキップ
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes = [
-      # 自動作成されたリソースの属性を無視
-      name,
-    ]
-  }
+  # destroy できるようにコメントアウト
+  # # 既存のリソースをインポートするため、作成済みのリソースをスキップ
+  # lifecycle {
+  #   prevent_destroy = true
+  #   ignore_changes = [
+  #     # 自動作成されたリソースの属性を無視
+  #     name,
+  #   ]
+  # }
 
   tags = {
     Environment = var.environment
@@ -64,14 +67,15 @@ resource "aws_cloudwatch_log_group" "lambda_tags_logs" {
   name              = "/aws/lambda/${aws_lambda_function.cloudpix_tags.function_name}"
   retention_in_days = var.metrics_retention_days
 
-  # 既存のリソースをインポートするため、作成済みのリソースをスキップ
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes = [
-      # 自動作成されたリソースの属性を無視
-      name,
-    ]
-  }
+  # destroy できるようにコメントアウト
+  # # 既存のリソースをインポートするため、作成済みのリソースをスキップ
+  # lifecycle {
+  #   prevent_destroy = true
+  #   ignore_changes = [
+  #     # 自動作成されたリソースの属性を無視
+  #     name,
+  #   ]
+  # }
 
   tags = {
     Environment = var.environment

@@ -29,7 +29,7 @@ func main() {
 
 	// DynamoDBクライアントの初期化
 	dbClient := dynamodb.New(sess)
-	log.Printf("Tags Lambda initialized with tables: Metadata=%s", cfg.MetadataTableName)
+	log.Printf("List Lambda initialized with tables: Metadata=%s", cfg.MetadataTableName)
 
 	// リポジトリのセットアップ
 	metaRepo := persistence.NewDynamoDBMetadataRepository(dbClient, cfg.MetadataTableName)
@@ -37,12 +37,24 @@ func main() {
 	// ユースケースのセットアップ
 	metaUsecase := usecase.NewMetadataUsecase(metaRepo)
 
-	// ミドルウェアの作成
-	authMiddleware := middleware.CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.ClientID)
-
 	// ハンドラのセットアップ
-	metaHandler := handler.NewListHandler(metaUsecase, authMiddleware)
+	metaHandler := handler.NewListHandler(metaUsecase)
+
+	// ミドルウェア設定の作成
+	middlewareCfg := middleware.NewDefaultMiddlewareConfig()
+	middlewareCfg.AWSRegion = cfg.AWSRegion
+	middlewareCfg.UserPoolID = cfg.UserPoolID
+	middlewareCfg.ClientID = cfg.ClientID
+	middlewareCfg.ServiceName = "CloudPix"
+	middlewareCfg.OperationName = "ListImages"
+	middlewareCfg.FunctionName = "ListLambda"
+
+	// ハンドラーファクトリの作成
+	handlerFactory := middleware.NewHandlerFactory(middlewareCfg).WithAWSSession(sess)
+
+	// ミドルウェアを適用したハンドラーを作成
+	wrappedHandler := handlerFactory.WrapAPIGatewayHandler(metaHandler.Handle)
 
 	// Lambda関数のスタート
-	lambda.Start(metaHandler.Handle)
+	lambda.Start(wrappedHandler)
 }

@@ -162,7 +162,7 @@ func TestListHandler_Handle(t *testing.T) {
 
 			// ハンドラを作成
 			metadataUsecase := usecase.NewMetadataUsecase(mockRepo)
-			handler := NewListHandler(metadataUsecase, mockAuth)
+			handler := NewListHandler(metadataUsecase)
 
 			// テスト実行
 			resp, err := handler.Handle(context.Background(), tc.request)
@@ -194,11 +194,10 @@ func TestListHandler_ErrorResponse(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := repository.NewMockMetadataRepository(ctrl)
-	mockAuth := middleware.NewMockAuthMiddleware(ctrl)
 
 	// ハンドラを作成
 	metadataUsecase := usecase.NewMetadataUsecase(mockRepo)
-	handler := NewListHandler(metadataUsecase, mockAuth)
+	handler := NewListHandler(metadataUsecase)
 
 	// エラーレスポンスをテスト
 	resp, err := handler.errorResponse(500, "Test error message")
@@ -219,11 +218,10 @@ func TestListHandler_JsonResponse(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := repository.NewMockMetadataRepository(ctrl)
-	mockAuth := middleware.NewMockAuthMiddleware(ctrl)
 
 	// ハンドラを作成
 	metadataUsecase := usecase.NewMetadataUsecase(mockRepo)
-	handler := NewListHandler(metadataUsecase, mockAuth)
+	handler := NewListHandler(metadataUsecase)
 
 	// テスト用のデータ
 	testData := map[string]interface{}{
