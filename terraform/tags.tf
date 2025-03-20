@@ -50,12 +50,7 @@ resource "aws_lambda_function" "cloudpix_tags" {
   memory_size = 128
 
   environment {
-    variables = {
-      TAGS_TABLE_NAME     = aws_dynamodb_table.cloudpix_tags.name
-      METADATA_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
-      USER_POOL_ID        = aws_cognito_user_pool.cloudpix_users.id
-      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.cloudpix_client.id
-    }
+    variables = local.tags_lambda_env_vars
   }
 
   depends_on = [

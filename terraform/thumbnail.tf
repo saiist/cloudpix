@@ -52,12 +52,7 @@ resource "aws_lambda_function" "cloudpix_thumbnail" {
   memory_size = 512 # 画像処理には多めのメモリが必要
 
   environment {
-    variables = {
-      S3_BUCKET_NAME      = aws_s3_bucket.cloudpix_images.bucket
-      METADATA_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
-      USER_POOL_ID        = aws_cognito_user_pool.cloudpix_users.id
-      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.cloudpix_client.id
-    }
+    variables = local.thumbnail_lambda_env_vars
   }
 
   depends_on = [

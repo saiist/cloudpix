@@ -62,12 +62,7 @@ resource "aws_lambda_function" "cloudpix_upload" {
 
   # 環境変数を追加
   environment {
-    variables = {
-      S3_BUCKET_NAME      = aws_s3_bucket.cloudpix_images.bucket
-      METADATA_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
-      USER_POOL_ID        = aws_cognito_user_pool.cloudpix_users.id
-      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.cloudpix_client.id
-    }
+    variables = local.upload_lambda_env_vars
   }
 
   depends_on = [
@@ -91,11 +86,7 @@ resource "aws_lambda_function" "cloudpix_list" {
   memory_size = var.lambda_memory_size
 
   environment {
-    variables = {
-      METADATA_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
-      USER_POOL_ID        = aws_cognito_user_pool.cloudpix_users.id
-      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.cloudpix_client.id
-    }
+    variables = local.list_lambda_env_vars
   }
 
   depends_on = [
