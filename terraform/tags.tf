@@ -61,6 +61,11 @@ resource "aws_lambda_function" "cloudpix_tags" {
   depends_on = [
     null_resource.docker_build_push_tags
   ]
+
+  # X-Rayトレースを有効化
+  tracing_config {
+    mode = "Active"
+  }
 }
 
 ################################

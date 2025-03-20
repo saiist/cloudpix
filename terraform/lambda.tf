@@ -73,6 +73,11 @@ resource "aws_lambda_function" "cloudpix_upload" {
   depends_on = [
     null_resource.docker_build_push_upload
   ]
+
+  # X-Rayトレースを有効化
+  tracing_config {
+    mode = "Active"
+  }
 }
 
 # リスト用Lambda関数
@@ -96,4 +101,9 @@ resource "aws_lambda_function" "cloudpix_list" {
   depends_on = [
     null_resource.docker_build_push_list
   ]
+
+  # X-Rayトレースを有効化
+  tracing_config {
+    mode = "Active"
+  }
 }
