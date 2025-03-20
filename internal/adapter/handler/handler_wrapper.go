@@ -32,3 +32,36 @@ func WithAuth(authMiddleware middleware.AuthMiddleware, handler HandlerFunc) Han
 		return handler(newCtx, event)
 	}
 }
+
+// WithMetrics はメトリクス収集ミドルウェアを適用するハンドラーラッパー
+func WithMetrics(metricsMiddleware *middleware.MetricsMiddleware, handler HandlerFunc) HandlerFunc {
+	return func(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+		// レスポンスとエラーを格納する変数
+		var resp events.APIGatewayProxyResponse
+		var err error
+
+		// 処理時間計測を開始し、完了時に計測を終了する
+		defer metricsMiddleware.StartTiming(ctx)(ctx, &resp, &err)
+
+		// ハンドラー実行
+		resp, err = handler(ctx, event)
+		return resp, err
+	}
+}
+
+// WithMetricsForThumbnail はメトリクス収集ミドルウェアを適用するハンドラーラッパー
+func WithMetricsForThumbnail(metricsMiddleware *middleware.MetricsMiddleware,
+	handler func(ctx context.Context, s3Event events.S3Event) error) func(ctx context.Context, s3Event events.S3Event) error {
+
+	return func(ctx context.Context, s3Event events.S3Event) error {
+		// エラーを格納する変数
+		var err error
+
+		// 処理時間計測を開始し、完了時に計測を終了する
+		defer metricsMiddleware.StartTimingForThumbnail(ctx, s3Event)(ctx, &err)
+
+		// ハンドラー実行
+		err = handler(ctx, s3Event)
+		return err
+	}
+}
