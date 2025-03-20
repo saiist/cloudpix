@@ -15,10 +15,16 @@ type HandlerFunc func(context.Context, events.APIGatewayProxyRequest) (events.AP
 // Middleware はミドルウェア関数の型定義
 type Middleware func(HandlerFunc) HandlerFunc
 
+// CleanupableMiddleware はリソース解放が必要なミドルウェアのためのインターフェース
+type CleanupableMiddleware interface {
+	Cleanup() error
+}
+
 // MiddlewareRegistry はミドルウェアを管理するレジストリ
 type MiddlewareRegistry struct {
-	middlewares map[string]Middleware
-	mu          sync.RWMutex
+	middlewares        map[string]Middleware
+	cleanupMiddlewares map[string]CleanupableMiddleware
+	mu                 sync.RWMutex
 }
 
 // グローバルインスタンス
@@ -38,7 +44,8 @@ func GetRegistry() *MiddlewareRegistry {
 // NewMiddlewareRegistry は新しいミドルウェアレジストリを作成する
 func NewMiddlewareRegistry() *MiddlewareRegistry {
 	return &MiddlewareRegistry{
-		middlewares: make(map[string]Middleware),
+		middlewares:        make(map[string]Middleware),
+		cleanupMiddlewares: make(map[string]CleanupableMiddleware),
 	}
 }
 
@@ -48,6 +55,16 @@ func (r *MiddlewareRegistry) Register(name string, middleware Middleware) {
 	defer r.mu.Unlock()
 	r.middlewares[name] = middleware
 	log.Printf("Registered middleware: %s", name)
+}
+
+// RegisterCleanupableMiddleware はクリーンアップ可能なミドルウェアを登録する
+func (r *MiddlewareRegistry) RegisterCleanupableMiddleware(name string, middleware Middleware, cleanupable CleanupableMiddleware) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.middlewares[name] = middleware
+	r.cleanupMiddlewares[name] = cleanupable
+	log.Printf("Registered cleanupable middleware: %s", name)
 }
 
 // Get は指定された名前のミドルウェアを取得する
@@ -101,7 +118,7 @@ func (r *MiddlewareRegistry) RegisterAuthMiddleware(name string, authMiddleware 
 
 // RegisterMetricsMiddleware はメトリクスミドルウェアを登録する
 func (r *MiddlewareRegistry) RegisterMetricsMiddleware(name string, metricsMiddleware *MetricsMiddleware) {
-	r.Register(name, func(next HandlerFunc) HandlerFunc {
+	middlewareFunc := func(next HandlerFunc) HandlerFunc {
 		return func(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 			// レスポンスとエラーを格納する変数
 			var resp events.APIGatewayProxyResponse
@@ -114,7 +131,10 @@ func (r *MiddlewareRegistry) RegisterMetricsMiddleware(name string, metricsMiddl
 			resp, err = next(ctx, event)
 			return resp, err
 		}
-	})
+	}
+
+	// クリーンアップ可能なミドルウェアとして登録
+	r.RegisterCleanupableMiddleware(name, middlewareFunc, metricsMiddleware)
 }
 
 // RegisterStandardMiddlewares は標準的なミドルウェアを一括で登録する

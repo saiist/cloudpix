@@ -1,4 +1,3 @@
-// internal/infrastructure/metrics/cloudwatch_metrics.go
 package metrics
 
 import (
@@ -19,6 +18,9 @@ type MetricsService interface {
 
 	// Flush はバッファのメトリクスを送信する
 	Flush(ctx context.Context) error
+
+	// Close はメトリクスサービスを適切に終了する
+	Close() error
 }
 
 // MetricsConfig はメトリクス収集の設定
@@ -44,6 +46,7 @@ type CloudWatchMetricsService struct {
 	mutex            sync.RWMutex
 	batchData        []*cloudwatch.MetricDatum
 	flushThreshold   int
+	stopCh           chan struct{} // 停止用チャネル
 }
 
 // NewCloudWatchMetricsService は新しいCloudWatchメトリクスサービスを作成する
@@ -56,6 +59,7 @@ func NewCloudWatchMetricsService(sess *session.Session, config MetricsConfig) Me
 		cloudWatchClient: cwClient,
 		flushThreshold:   config.BatchSize,
 		batchData:        make([]*cloudwatch.MetricDatum, 0, config.BatchSize),
+		stopCh:           make(chan struct{}),
 	}
 
 	// 定期的にバッファをフラッシュするゴルーチン
@@ -64,9 +68,16 @@ func NewCloudWatchMetricsService(sess *session.Session, config MetricsConfig) Me
 			ticker := time.NewTicker(config.FlushInterval)
 			defer ticker.Stop()
 
-			for range ticker.C {
-				if err := service.Flush(context.Background()); err != nil {
-					log.Printf("Error flushing metrics: %v", err)
+			for {
+				select {
+				case <-ticker.C:
+					if err := service.Flush(context.Background()); err != nil {
+						log.Printf("Error flushing metrics: %v", err)
+					}
+				case <-service.stopCh:
+					// 最後に残っているメトリクスをフラッシュして終了
+					service.Flush(context.Background())
+					return
 				}
 			}
 		}()
@@ -132,10 +143,7 @@ func (s *CloudWatchMetricsService) Flush(ctx context.Context) error {
 	// CloudWatchにメトリクスを送信（最大サイズを考慮してバッチ処理）
 	const maxMetricsPerRequest = 20
 	for i := 0; i < len(metrics); i += maxMetricsPerRequest {
-		end := i + maxMetricsPerRequest
-		if end > len(metrics) {
-			end = len(metrics)
-		}
+		end := min(i+maxMetricsPerRequest, len(metrics))
 
 		batch := metrics[i:end]
 		_, err := s.cloudWatchClient.PutMetricDataWithContext(ctx, &cloudwatch.PutMetricDataInput{
@@ -148,5 +156,11 @@ func (s *CloudWatchMetricsService) Flush(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+// Close はメトリクスサービスを適切に終了する
+func (s *CloudWatchMetricsService) Close() error {
+	close(s.stopCh)
 	return nil
 }

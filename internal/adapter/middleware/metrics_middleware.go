@@ -192,3 +192,14 @@ func (m *MetricsMiddleware) FlushMetrics(ctx context.Context) error {
 	}
 	return m.metricsService.Flush(ctx)
 }
+
+// Cleanup はリソース解放を行う
+// CleanupableMiddlewareインターフェースに対応させる
+func (m *MetricsMiddleware) Cleanup() error {
+	if m.metricsService != nil {
+		if closer, ok := m.metricsService.(interface{ Close() error }); ok {
+			return closer.Close()
+		}
+	}
+	return nil
+}
