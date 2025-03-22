@@ -47,7 +47,7 @@ resource "aws_lambda_function" "cloudpix_cleanup" {
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.cloudpix_cleanup.repository_url}:latest"
 
-  timeout     = 300  # 長めに設定（5分）
+  timeout     = 300 # 長めに設定（5分）
   memory_size = var.lambda_memory_size
 
   environment {

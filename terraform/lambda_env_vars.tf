@@ -38,7 +38,7 @@ locals {
     S3_BUCKET_NAME      = aws_s3_bucket.cloudpix_images.bucket
     METADATA_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
     TAGS_TABLE_NAME     = aws_dynamodb_table.cloudpix_tags.name
-    RETENTION_DAYS     = var.image_retention_days
+    RETENTION_DAYS      = var.image_retention_days
   })
 
 

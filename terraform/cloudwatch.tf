@@ -83,6 +83,18 @@ resource "aws_cloudwatch_log_group" "lambda_tags_logs" {
   }
 }
 
+# クリーンアップLambda関数のロググループ追加
+resource "aws_cloudwatch_log_group" "lambda_cleanup_logs" {
+  name              = "/aws/lambda/${aws_lambda_function.cloudpix_cleanup.function_name}"
+  retention_in_days = var.metrics_retention_days
+
+  tags = {
+    Environment = var.environment
+    Application = var.app_name
+  }
+}
+
+
 ################################
 # CloudWatch アラーム
 ################################
@@ -93,6 +105,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
     list      = aws_lambda_function.cloudpix_list.function_name
     thumbnail = aws_lambda_function.cloudpix_thumbnail.function_name
     tags      = aws_lambda_function.cloudpix_tags.function_name
+    cleanup   = aws_lambda_function.cloudpix_cleanup.function_name
   }
 
   alarm_name          = "${each.value}-error-alarm"
@@ -121,6 +134,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_duration_alarm" {
     list      = { name = aws_lambda_function.cloudpix_list.function_name, threshold = var.lambda_duration_threshold_base }
     thumbnail = { name = aws_lambda_function.cloudpix_thumbnail.function_name, threshold = var.lambda_duration_threshold_thumbnail }
     tags      = { name = aws_lambda_function.cloudpix_tags.function_name, threshold = var.lambda_duration_threshold_base }
+    cleanup   = { name = aws_lambda_function.cloudpix_cleanup.function_name, threshold = var.lambda_duration_threshold_base * 2 }
   }
 
   alarm_name          = "${each.value.name}-duration-alarm"
@@ -250,6 +264,18 @@ resource "aws_cloudwatch_log_metric_filter" "tags_error_logs" {
   }
 }
 
+resource "aws_cloudwatch_log_metric_filter" "cleanup_error_logs" {
+  name           = "${var.app_name}-cleanup-error-logs"
+  pattern        = "{ $.level = \"error\" }"
+  log_group_name = aws_cloudwatch_log_group.lambda_cleanup_logs.name
+
+  metric_transformation {
+    name      = "CleanupErrorCount"
+    namespace = "CloudPix/Logs"
+    value     = "1"
+  }
+}
+
 # 処理時間が長いリクエストの検出（Lambda関数別）
 resource "aws_cloudwatch_log_metric_filter" "upload_long_duration" {
   name           = "${var.app_name}-upload-long-duration"
@@ -299,6 +325,18 @@ resource "aws_cloudwatch_log_metric_filter" "tags_long_duration" {
   }
 }
 
+resource "aws_cloudwatch_log_metric_filter" "cleanup_long_duration" {
+  name           = "${var.app_name}-cleanup-long-duration"
+  pattern        = "{ $.duration > 5000 }"
+  log_group_name = aws_cloudwatch_log_group.lambda_cleanup_logs.name
+
+  metric_transformation {
+    name      = "CleanupLongDurationCount"
+    namespace = "CloudPix/Logs"
+    value     = "1"
+  }
+}
+
 # 操作別メトリクスカウント（主要な操作のみ）
 resource "aws_cloudwatch_log_metric_filter" "upload_image_count" {
   name           = "${var.app_name}-upload-image-count"
@@ -335,6 +373,33 @@ resource "aws_cloudwatch_log_metric_filter" "thumbnail_count" {
     value     = "1"
   }
 }
+
+# アーカイブ処理のメトリクスフィルター
+resource "aws_cloudwatch_log_metric_filter" "archive_image_count" {
+  name           = "${var.app_name}-archive-image-count"
+  pattern        = "{ $.operation = \"ArchiveImage\" && $.level = \"info\" }"
+  log_group_name = aws_cloudwatch_log_group.lambda_cleanup_logs.name
+
+  metric_transformation {
+    name      = "ArchivedImageCount"
+    namespace = "CloudPix/Operations"
+    value     = "1"
+  }
+}
+
+# クリーンアップ操作のメトリクスフィルター
+resource "aws_cloudwatch_log_metric_filter" "cleanup_old_images_count" {
+  name           = "${var.app_name}-cleanup-old-images-count"
+  pattern        = "{ $.operation = \"CleanupOldImages\" && $.level = \"info\" }"
+  log_group_name = aws_cloudwatch_log_group.lambda_cleanup_logs.name
+
+  metric_transformation {
+    name      = "CleanupProcessCount"
+    namespace = "CloudPix/Operations"
+    value     = "1"
+  }
+}
+
 
 # 認証エラーの検出
 resource "aws_cloudwatch_log_metric_filter" "auth_errors" {
@@ -496,6 +561,24 @@ resource "aws_cloudwatch_metric_alarm" "upload_response_5xx_alarm" {
   statistic           = "Sum"
   threshold           = 3
   alarm_description   = "アップロード処理で3回以上の5xxエラーレスポンスが発生しました。"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.cloudpix_alerts.arn]
+  ok_actions    = [aws_sns_topic.cloudpix_alerts.arn]
+}
+
+
+# クリーンアップエラーのアラーム
+resource "aws_cloudwatch_metric_alarm" "cleanup_errors_alarm" {
+  alarm_name          = "${var.app_name}-cleanup-errors-alarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "CleanupErrorCount"
+  namespace           = "CloudPix/Logs"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 3
+  alarm_description   = "クリーンアップ処理で3回以上のエラーが発生しました。アーカイブ機能に問題がある可能性があります。"
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.cloudpix_alerts.arn]
