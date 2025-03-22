@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
@@ -353,43 +352,37 @@ type processingStats struct {
 }
 
 // prepareOldImagesQuery はクエリ入力を準備する共通メソッド
-func (s *S3CleanupService) prepareOldImagesQuery(cutoffDateStr string) (*dynamodb.QueryInput, error) {
-	expr, err := expression.NewBuilder().
-		WithKeyCondition(expression.Key("UploadDate").LessThanEqual(expression.Value(cutoffDateStr))).
-		WithFilter(expression.AttributeExists(expression.Name("UploadDate"))).
-		Build()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to build expression: %w", err)
-	}
-
-	return &dynamodb.QueryInput{
-		TableName:                 aws.String(s.metadataTable),
-		IndexName:                 aws.String("UploadDateIndex"),
-		KeyConditionExpression:    expr.KeyCondition(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
+func (s *S3CleanupService) prepareOldImagesQuery(cutoffDateStr string) (*dynamodb.ScanInput, error) {
+	// GSIを使用するクエリではなく、スキャンを使用
+	return &dynamodb.ScanInput{
+		TableName:        aws.String(s.metadataTable),
+		FilterExpression: aws.String("attribute_exists(UploadDate) AND UploadDate <= :date"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":date": {
+				S: aws.String(cutoffDateStr),
+			},
+		},
 	}, nil
 }
 
 // processImagesWithPaging はページングを行いながら画像を処理する共通メソッド
 func (s *S3CleanupService) processImagesWithPaging(
 	ctx context.Context,
-	queryInput *dynamodb.QueryInput,
+	scanInput *dynamodb.ScanInput,
 	processor func(map[string]*dynamodb.AttributeValue) error,
 ) error {
 	var lastEvaluatedKey map[string]*dynamodb.AttributeValue
 
 	for {
-		// 前回のクエリで最後に評価されたキーがあれば、そこから再開
+		// 前回のスキャンで最後に評価されたキーがあれば、そこから再開
 		if lastEvaluatedKey != nil {
-			queryInput.ExclusiveStartKey = lastEvaluatedKey
+			scanInput.ExclusiveStartKey = lastEvaluatedKey
 		}
 
-		// クエリを実行
-		result, err := s.dynamoClient.QueryWithContext(ctx, queryInput)
+		// スキャンを実行
+		result, err := s.dynamoClient.ScanWithContext(ctx, scanInput)
 		if err != nil {
-			return fmt.Errorf("failed to query images: %w", err)
+			return fmt.Errorf("failed to scan images: %w", err)
 		}
 
 		// 結果が空の場合は終了
