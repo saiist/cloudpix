@@ -32,7 +32,7 @@ func LoggingMiddleware(config *logging.LoggingMiddlewareConfig) Middleware {
 			// ユーザー情報の取得
 			userID := ""
 			if userInfo, ok := contextutil.GetUserInfo(ctx); ok && userInfo != nil {
-				userID = userInfo.UserID
+				userID = userInfo.ID.String()
 				logger = logger.WithUserID(userID)
 			}
 

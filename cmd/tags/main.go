@@ -1,13 +1,15 @@
+// cmd/tags/main.go
 package main
 
 import (
+	"cloudpix/cmd/shared"
 	"cloudpix/config"
-	"cloudpix/internal/adapter/handler"
+	"cloudpix/internal/adapter/api/handler"
 	"cloudpix/internal/adapter/middleware"
-	"cloudpix/internal/infrastructure/persistence"
+	"cloudpix/internal/application/tagmanagement/usecase"
+	"cloudpix/internal/domain/shared/event/dispatcher"
+	"cloudpix/internal/infrastructure/persistence/dynamodb/tagmanagement"
 	"cloudpix/internal/logging"
-	"cloudpix/internal/usecase"
-	"fmt"
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -33,8 +35,6 @@ func main() {
 			"tagsTable":     cfg.TagsTableName,
 			"metadataTable": cfg.MetadataTableName,
 			"environment":   cfg.Environment,
-			"enableMetrics": fmt.Sprint(cfg.EnableMetrics),
-			"enableXRay":    fmt.Sprint(cfg.EnableXRay),
 		},
 	})
 
@@ -53,13 +53,14 @@ func main() {
 		"metadataTable": cfg.MetadataTableName,
 	})
 
-	// リポジトリのセットアップ
-	tagRepo := persistence.NewDynamoDBTagRepository(dbClient, cfg.TagsTableName, cfg.MetadataTableName)
+	// インフラストラクチャレイヤーのセットアップ
+	tagRepo := tagmanagement.NewDynamoDBTagRepository(dbClient, cfg.TagsTableName, cfg.MetadataTableName)
+	eventDispatcher := dispatcher.NewSimpleEventDispatcher()
 
-	// ユースケースのセットアップ
-	tagUsecase := usecase.NewTagUsecase(tagRepo)
+	// アプリケーションレイヤーのセットアップ
+	tagUsecase := usecase.NewTagUsecase(tagRepo, eventDispatcher)
 
-	// ハンドラのセットアップ
+	// インターフェースレイヤーのセットアップ
 	tagHandler := handler.NewTagHandler(tagUsecase)
 
 	// ミドルウェア設定の作成
@@ -83,11 +84,14 @@ func main() {
 		middlewareCfg.IncludeBody = false
 	}
 
+	// 認証コンポーネントの初期化
+	authUsecase := shared.InitAuth(cfg, sess, logger)
+
 	// ミドルウェアレジストリの取得
 	registry := middleware.GetRegistry()
 
 	// 標準ミドルウェアを登録
-	registry.RegisterStandardMiddlewares(sess, middlewareCfg)
+	registry.RegisterStandardMiddlewares(sess, middlewareCfg, authUsecase, logger)
 
 	// ミドルウェア名の順序を指定（ロギングが最初、認証が最後）
 	middlewareNames := []string{"logging", "metrics", "auth"}

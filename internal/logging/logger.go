@@ -231,19 +231,15 @@ func (l *CloudWatchLogger) WithContext(ctx context.Context) Logger {
 	}
 
 	// ユーザー情報をコンテキストから抽出
-	userInfo, ok := contextutil.GetUserInfo(ctx)
-	if ok && userInfo != nil {
-		newLogger.userID = userInfo.UserID
+	user, ok := contextutil.GetUserInfo(ctx)
+	if ok && user != nil {
+		newLogger.userID = user.ID.String()
 
 		// ユーザー関連の追加情報を defaultCtx に追加
 		newCtx := mergeContexts(newLogger.defaultCtx, nil)
-		newCtx["userGroups"] = userInfo.Groups
-		if userInfo.IsAdmin {
-			newCtx["isAdmin"] = true
-		}
-		if userInfo.IsPremium {
-			newCtx["isPremium"] = true
-		}
+		newCtx["userRols"] = user.Roles
+		newCtx["isAdmin"] = user.IsAdmin()
+		newCtx["isPremium"] = user.IsPremium()
 		newLogger.defaultCtx = newCtx
 	}
 

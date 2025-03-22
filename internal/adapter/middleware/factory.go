@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"cloudpix/internal/infrastructure/auth"
 	"context"
 	"log"
 
@@ -9,12 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 )
-
-// CreateDefaultAuthMiddleware は環境変数から標準認証ミドルウェアを作成する
-func CreateDefaultAuthMiddleware(region, userPoolID, clientID string) AuthMiddleware {
-	authRepo := auth.NewCognitoAuthRepository(region, userPoolID, clientID)
-	return NewCognitoAuthMiddleware(authRepo)
-}
 
 // HandlerFactory はLambdaハンドラーを生成するためのファクトリ
 type HandlerFactory struct {
@@ -54,36 +47,6 @@ func (f *HandlerFactory) getOrCreateAWSSession() *session.Session {
 
 	f.awsSession = sess
 	return sess
-}
-
-// RegisterMiddlewares は設定に基づいてミドルウェアを登録する
-func (f *HandlerFactory) RegisterMiddlewares() {
-	sess := f.getOrCreateAWSSession()
-	if sess == nil {
-		log.Printf("Warning: Failed to create AWS session, some middlewares may not work correctly")
-	}
-
-	f.registry.RegisterStandardMiddlewares(sess, f.config)
-}
-
-// WrapHandler はハンドラーにミドルウェアを適用する
-func (f *HandlerFactory) WrapHandler(handler HandlerFunc) HandlerFunc {
-	// まだミドルウェアが登録されていない場合は登録する
-	if f.registry.Count() == 0 {
-		f.RegisterMiddlewares()
-	}
-
-	// ミドルウェアチェーンを構築
-	middlewareNames := f.config.GetDefaultMiddlewareNames()
-	chain := f.registry.BuildChain(middlewareNames)
-
-	// ハンドラーを包む
-	return chain.Then(handler)
-}
-
-// WrapAPIGatewayHandler はAPI Gateway Lambdaハンドラーにミドルウェアを適用する
-func (f *HandlerFactory) WrapAPIGatewayHandler(handler HandlerFunc) func(context.Context, events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	return f.WrapHandler(handler)
 }
 
 // WrapS3EventHandler はS3イベントハンドラーにミドルウェアを適用する
