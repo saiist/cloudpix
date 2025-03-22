@@ -355,11 +355,14 @@ type processingStats struct {
 func (s *S3CleanupService) prepareOldImagesQuery(cutoffDateStr string) (*dynamodb.ScanInput, error) {
 	return &dynamodb.ScanInput{
 		TableName: aws.String(s.metadataTable),
-		// UploadDateが存在し、基準日以前のアイテムのみをスキャン
-		FilterExpression: aws.String("attribute_exists(UploadDate) AND UploadDate <= :date"),
+		// UploadDateが存在し、かつ空でなく、基準日以前のアイテムのみをスキャン
+		FilterExpression: aws.String("attribute_exists(UploadDate) AND attribute_type(UploadDate, :s) AND UploadDate <= :date"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":date": {
 				S: aws.String(cutoffDateStr),
+			},
+			":s": {
+				S: aws.String("S"), // 文字列型のチェック
 			},
 		},
 	}, nil
