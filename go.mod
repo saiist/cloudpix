@@ -11,7 +11,6 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.1
 	github.com/google/uuid v1.6.0
 	github.com/lestrrat-go/jwx v1.2.30
-	go.uber.org/mock v0.5.0
 )
 
 require (
