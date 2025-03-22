@@ -2,13 +2,13 @@ package main
 
 import (
 	"cloudpix/config"
-	"cloudpix/internal/adapter/handler"
+	"cloudpix/internal/adapter/api/handler"
 	"cloudpix/internal/adapter/middleware"
-	"cloudpix/internal/infrastructure/persistence"
-	"cloudpix/internal/infrastructure/storage"
+	"cloudpix/internal/application/imagemanagement/usecase"
+	"cloudpix/internal/domain/shared/event/dispatcher"
+	"cloudpix/internal/infrastructure/persistence/dynamodb/imagemanagement"
+	internal_s3 "cloudpix/internal/infrastructure/storage/s3"
 	"cloudpix/internal/logging"
-	"cloudpix/internal/usecase"
-	"fmt"
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -19,8 +19,7 @@ import (
 )
 
 func main() {
-	// 環境変数の設定（ロギングシステムの初期化前に必要な場合）
-	// 例: 開発環境ではデバッグログを有効化
+	// 環境変数の設定
 	if os.Getenv("ENVIRONMENT") == "dev" {
 		os.Setenv("LOG_LEVEL", "debug")
 	}
@@ -36,8 +35,6 @@ func main() {
 			"bucketName":    cfg.S3BucketName,
 			"metadataTable": cfg.MetadataTableName,
 			"environment":   cfg.Environment,
-			"enableMetrics": fmt.Sprint(cfg.EnableMetrics),
-			"enableXRay":    fmt.Sprint(cfg.EnableXRay),
 		},
 	})
 
@@ -53,14 +50,15 @@ func main() {
 	s3Client := s3.New(sess)
 	dbClient := dynamodb.New(sess)
 
-	// リポジトリのセットアップ
-	storageRepo := storage.NewS3StorageRepository(s3Client, cfg.AWSRegion)
-	metadataRepo := persistence.NewDynamoDBUploadMetadataRepository(dbClient, cfg.MetadataTableName)
+	// インフラストラクチャレイヤーのセットアップ
+	imageRepo := imagemanagement.NewDynamoDBImageRepository(dbClient, cfg.MetadataTableName)
+	storageService := internal_s3.NewS3StorageService(s3Client, cfg.AWSRegion)
+	eventDispatcher := dispatcher.NewSimpleEventDispatcher()
 
-	// ユースケースのセットアップ
-	uploadUsecase := usecase.NewUploadUsecase(storageRepo, metadataRepo, cfg.S3BucketName)
+	// アプリケーションレイヤーのセットアップ
+	uploadUsecase := usecase.NewUploadUsecase(imageRepo, storageService, eventDispatcher, cfg.S3BucketName)
 
-	// ハンドラのセットアップ
+	// インターフェースレイヤーのセットアップ
 	uploadHandler := handler.NewUploadHandler(uploadUsecase)
 
 	// ミドルウェア設定の作成
@@ -79,7 +77,6 @@ func main() {
 		middlewareCfg.IncludeHeaders = true
 		middlewareCfg.IncludeBody = true
 	} else {
-		// 本番環境では最小限のログ
 		middlewareCfg.DetailedRequestLog = false
 		middlewareCfg.DetailedResponseLog = false
 		middlewareCfg.IncludeHeaders = false
@@ -92,7 +89,7 @@ func main() {
 	// 標準ミドルウェアを登録
 	registry.RegisterStandardMiddlewares(sess, middlewareCfg)
 
-	// ミドルウェア名の順序を指定（ロギングが最初、認証が最後）
+	// ミドルウェア名の順序を指定
 	middlewareNames := []string{"logging", "metrics", "auth"}
 
 	// ミドルウェアチェーンの構築
