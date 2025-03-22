@@ -1,6 +1,6 @@
 # CloudPix - サーバーレス画像管理システム
 
-CloudPixは、AWSのサーバーレスサービスを活用した画像アップロードと管理を行うシステムです。画像のアップロード、保存、メタデータ管理、一覧取得、自動サムネイル生成に加え、画像へのタグ付けと検索機能を備えています。
+CloudPixは、AWSのサーバーレスサービスを活用した画像のアップロードと管理を行うシステムです。画像のアップロード、保存、メタデータ管理、一覧取得、自動サムネイル生成に加え、画像へのタグ付けと検索機能を備えています。
 
 ## アーキテクチャ図
 
@@ -25,25 +25,34 @@ CloudPixは、AWSのサーバーレスサービスを活用した画像アップ
 ```
 cloudpix/
   ├── cmd/                 # エントリーポイント
-  │   ├── upload/
-  │   ├── list/
-  │   ├── thumbnail/
-  │   └── tags/
+  │   ├── upload/          # 画像アップロード機能
+  │   ├── list/            # 画像一覧取得機能
+  │   ├── thumbnail/       # サムネイル生成機能
+  │   └── tags/            # タグ管理機能
   ├── internal/            # 内部パッケージ
   │   ├── domain/          # ドメイン層
-  │   │   ├── model/       # ドメインモデル
-  │   │   ├── repository/  # リポジトリインターフェース
-  │   │   └── service/     # ドメインサービス
-  │   ├── usecase/         # ユースケース層
+  │   │   ├── imagemanagement/   # 画像管理ドメイン
+  │   │   ├── thumbnailmanagement/ # サムネイル管理ドメイン
+  │   │   ├── tagmanagement/     # タグ管理ドメイン
+  │   │   ├── authmanagement/    # 認証管理ドメイン
+  │   │   └── shared/            # 共有コンポーネント
+  │   ├── application/     # アプリケーション層（ユースケース）
+  │   │   ├── imagemanagement/   # 画像管理ユースケース
+  │   │   ├── thumbnailmanagement/ # サムネイル管理ユースケース
+  │   │   ├── tagmanagement/     # タグ管理ユースケース
+  │   │   └── authmanagement/    # 認証管理ユースケース
   │   ├── infrastructure/  # インフラストラクチャ層
   │   │   ├── persistence/ # DynamoDB実装
   │   │   ├── storage/     # S3実装
   │   │   ├── imaging/     # 画像処理実装
-  │   │   └── auth/        # 認証実装
+  │   │   ├── auth/        # 認証実装
+  │   │   └── metrics/     # メトリクス収集
   │   └── adapter/         # アダプター層
-  │       ├── handler/     # イベントハンドラー
-  │       └── middleware/  # ミドルウェア（認証等）
-  └── config/              # 設定
+  │       ├── api/         # APIハンドラー
+  │       ├── event/       # イベントハンドラー
+  │       └── middleware/  # ミドルウェア（認証、ロギング、メトリクス等）
+  ├── config/              # 設定
+  └── terraform/           # インフラストラクチャコード
 ```
 
 ## 主要コンポーネント
@@ -96,32 +105,48 @@ cloudpix/
   - StandardUsers - 一般ユーザー
 - **JWT認証** - JWTトークンを使用したAPIアクセス制御
 
+### 8. メトリクス収集と監視
+- **CloudWatch Logs** - 構造化ログ記録
+- **CloudWatch Metrics** - カスタムメトリクス収集
+- **CloudWatch Alarms** - 異常検知とアラート通知
+- **CloudWatch Dashboard** - リアルタイムメトリクス可視化
+- **X-Ray** - 分散トレーシング
+
 ## ドメインモデル
 
 ### 主要なドメインモデル
 
-- **ImageMetadata**: 画像のメタデータを表すモデル
-- **ThumbnailInfo**: サムネイル情報を表すモデル
-- **ImageData**: 画像のバイナリデータと ContentType を保持
-- **TagItem**: タグ情報を表すモデル
-- **UploadRequest**: アップロードリクエストのモデル
-- **UploadResponse**: アップロードレスポンスのモデル
-- **UserInfo**: ユーザー情報を保持するモデル
+#### 画像管理
+- **Image**: 画像情報を表すエンティティ
+- **ImageAggregate**: 画像に関連する情報を集約したアグリゲート
+- **FileName, ContentType, ImageSize, UploadDate**: 画像に関する値オブジェクト
+- **StorageService**: 画像ストレージサービスインターフェース
+- **ImageRepository**: 画像リポジトリインターフェース
 
-### リポジトリインターフェース
+#### サムネイル管理
+- **Thumbnail**: サムネイル情報を表すエンティティ
+- **Dimensions, ImageData**: サムネイルに関する値オブジェクト
+- **ImageProcessingService**: 画像処理サービスインターフェース
+- **ThumbnailRepository**: サムネイルリポジトリインターフェース
 
-ドメイン層で定義され、インフラストラクチャ層で実装されるインターフェース:
+#### タグ管理
+- **TaggedImage**: タグ付き画像を表すエンティティ
+- **Tag**: タグを表す値オブジェクト
+- **TagRepository**: タグリポジトリインターフェース
 
-- **MetadataRepository**: メタデータの取得操作
-- **StorageRepository**: S3操作（画像の取得、アップロード、URLの生成）
-- **ThumbnailRepository**: サムネイル情報の更新
-- **TagRepository**: タグの操作（追加、削除、検索）
-- **UploadMetadataRepository**: アップロードメタデータの保存
-- **AuthRepository**: 認証に関する操作を扱うインターフェース
+#### 認証管理
+- **User**: ユーザー情報を表すエンティティ
+- **UserID, Credentials**: ユーザー関連の値オブジェクト
+- **AuthService**: 認証サービスインターフェース
+- **AuthRepository**: 認証リポジトリインターフェース
 
-### ドメインサービス
-
-- **ImageService**: 画像処理に関する操作（デコード、サムネイル生成、ID抽出）
+### イベント駆動型設計
+- **DomainEvent**: ドメインイベントインターフェース
+- **EventDispatcher**: イベントディスパッチャーインターフェース
+- **EventHandler**: イベントハンドラーインターフェース
+- **ImageUploadedEvent**: 画像アップロード完了イベント
+- **ThumbnailGeneratedEvent**: サムネイル生成完了イベント
+- **TagsUpdatedEvent**: タグ更新完了イベント
 
 ## 認証フロー
 
@@ -149,6 +174,9 @@ cloudpix/
 - **タグ管理機能** - 画像へのタグ付け、タグの一覧取得、タグによる画像検索
 - **タグ検索** - タグに基づいて画像をフィルタリング
 - **包括的なメトリクス収集** - CloudWatchを使用した詳細なパフォーマンスメトリクスとモニタリング
+- **構造化ロギング** - JSON形式の構造化ログでリクエスト追跡と問題診断を強化
+- **分散トレーシング** - AWS X-Rayによる関数間の呼び出し追跡
+- **アラート通知** - 重要な問題が発生した際のSNS通知
 
 ## コマンド一覧
 
@@ -170,25 +198,25 @@ make go-test-coverage
 # APIのテスト
 
 ## 認証処理を含む画像アップロードテスト
-make test-upload
+make api-test-upload
 
 ## 画像一覧取得テスト
-make test-list
+make api-test-list
 
 ## 特定の日付の画像一覧取得テスト
-make test-list-date
+make api-test-list-date
 
 ## タグ追加テスト
-make test-add-tags
+make api-test-add-tags
 
 ## 画像のタグ取得テスト
-make test-get-image-tags
+make api-test-get-image-tags
 
 ## すべてのタグリスト取得テスト
-make test-list-tags
+make api-test-list-tags
 
 ## タグによる画像検索テスト
-make test-search-by-tag
+make api-test-search-by-tag
 
 # Lambda関数コード更新
 
@@ -205,13 +233,60 @@ make update-thumbnail-code
 make update-tags-code
 ```
 
-アプリケーションのビルドとテストには以下のコマンドを使用します：
+## プロジェクトのセットアップと実行
 
-1. **単体テスト実行**: `make go-test` - すべての単体テストをシンプルに実行します
-2. **詳細テスト実行**: `make go-test-verbose` - テスト実行の詳細なログを表示します
-3. **カバレッジ測定**: `make go-test-coverage` - テストカバレッジを測定しHTMLレポートを作成します
+### 環境のセットアップ
 
-APIテストは各機能ごとに用意されており、実際のAWS環境に対して行われます。
+1. 必要なツールのインストール:
+   ```bash
+   # AWS CLIのインストールと設定
+   aws configure
+   
+   # Terraformのインストール
+   # https://learn.hashicorp.com/tutorials/terraform/install-cli
+   ```
+
+2. 環境変数の設定:
+   ```bash
+   # terraform.tfvars ファイルの作成
+   cd terraform
+   make tf-init-env
+   # 作成されたterraform.tfvarsファイルを適切に編集
+   ```
+
+### インフラストラクチャのデプロイ
+
+```bash
+# Terraformの初期化
+make tf-init
+
+# 変更内容の確認
+make tf-plan
+
+# インフラのデプロイ
+make tf-apply
+```
+
+### アプリケーションのテスト
+
+デプロイ後、以下のコマンドでAPIが正常に機能していることを確認できます:
+
+```bash
+# 画像アップロードのテスト
+make api-test-upload
+
+# アップロードされた画像の一覧取得
+make api-test-list
+```
+
+## 設計上の考慮点
+
+- **ドメイン駆動設計**: ビジネスドメインに焦点を当てたモデリングを採用
+- **クリーンアーキテクチャ**: 関心事の分離とテスト容易性を重視
+- **イベント駆動アーキテクチャ**: 非同期処理による疎結合なシステム設計
+- **マイクロサービス**: 各機能を独立したLambda関数として実装
+- **Infrastructure as Code**: Terraformによるインフラの完全自動化
+- **詳細なモニタリング**: トラブルシューティングと性能最適化のため
 
 ## 今後の拡張予定
 
