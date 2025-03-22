@@ -1,42 +1,64 @@
 package event
 
 import (
-	upload_event "cloudpix/internal/domain/imagemanagement/event"
+	"cloudpix/internal/application/thumbnailmanagement/usecase"
+	imagemanagement_evnet "cloudpix/internal/domain/imagemanagement/event"
 	"cloudpix/internal/domain/shared/event/dispatcher"
+	"cloudpix/internal/logging"
 	"context"
 	"fmt"
 )
 
-// ThumbnailGenerator はサムネイル生成サービスのインターフェース
-type ThumbnailGenerator interface {
-	GenerateThumbnail(ctx context.Context, bucket, key string) error
-}
-
 // ImageUploadedHandler は画像アップロードイベントを処理するハンドラー
 type ImageUploadedHandler struct {
-	thumbnailGenerator ThumbnailGenerator
+	thumbnailUsecase *usecase.ThumbnailGenerationUsecase
+	logger           logging.Logger
 }
 
 // NewImageUploadedHandler は新しいイベントハンドラーを作成します
-func NewImageUploadedHandler(thumbnailGenerator ThumbnailGenerator) *ImageUploadedHandler {
+func NewImageUploadedHandler(thumbnailUsecase *usecase.ThumbnailGenerationUsecase, logger logging.Logger) *ImageUploadedHandler {
 	return &ImageUploadedHandler{
-		thumbnailGenerator: thumbnailGenerator,
+		thumbnailUsecase: thumbnailUsecase,
+		logger:           logger,
 	}
 }
 
 // HandleEvent はイベントを処理します
 func (h *ImageUploadedHandler) HandleEvent(ctx context.Context, event dispatcher.DomainEvent) error {
 	// イベントを適切な型にキャスト
-	uploadEvent, ok := event.(*upload_event.ImageUploadedEvent)
+	uploadEvent, ok := event.(*imagemanagement_evnet.ImageUploadedEvent)
 	if !ok {
 		return fmt.Errorf("expected ImageUploadedEvent, got %T", event)
 	}
 
+	h.logger.Info("Processing image upload event", map[string]interface{}{
+		"imageId":     uploadEvent.ImageID,
+		"bucket":      uploadEvent.Bucket,
+		"s3ObjectKey": uploadEvent.S3ObjectKey,
+	})
+
 	// サムネイルを生成
-	err := h.thumbnailGenerator.GenerateThumbnail(ctx, uploadEvent.Bucket, uploadEvent.S3ObjectKey)
+	result, err := h.thumbnailUsecase.ProcessImage(ctx, uploadEvent.Bucket, uploadEvent.S3ObjectKey)
 	if err != nil {
+		h.logger.Error(err, "Failed to generate thumbnail", map[string]interface{}{
+			"imageId": uploadEvent.ImageID,
+		})
 		return fmt.Errorf("failed to generate thumbnail: %w", err)
 	}
+
+	if !result.Success {
+		h.logger.Warn("Thumbnail generation was not successful", map[string]interface{}{
+			"imageId": uploadEvent.ImageID,
+			"message": result.Message,
+		})
+		return nil
+	}
+
+	h.logger.Info("Thumbnail generated successfully", map[string]interface{}{
+		"imageId":      uploadEvent.ImageID,
+		"thumbnailUrl": result.ThumbnailURL,
+		"dimensions":   fmt.Sprintf("%dx%d", result.Width, result.Height),
+	})
 
 	return nil
 }

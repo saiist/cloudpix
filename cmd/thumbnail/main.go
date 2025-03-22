@@ -1,14 +1,16 @@
+// cmd/thumbnail/main.go
 package main
 
 import (
 	"cloudpix/config"
-	"cloudpix/internal/adapter/handler"
+	s3handler "cloudpix/internal/adapter/event/s3"
 	"cloudpix/internal/adapter/middleware"
+	"cloudpix/internal/application/thumbnailmanagement/usecase"
+	"cloudpix/internal/domain/shared/event/dispatcher"
 	"cloudpix/internal/infrastructure/imaging"
-	"cloudpix/internal/infrastructure/persistence"
-	"cloudpix/internal/infrastructure/storage"
+	"cloudpix/internal/infrastructure/persistence/dynamodb/thumbnailmanagement"
+	s3storage "cloudpix/internal/infrastructure/storage/s3"
 	"cloudpix/internal/logging"
-	"cloudpix/internal/usecase"
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -54,21 +56,27 @@ func main() {
 	s3Client := s3.New(sess)
 	dbClient := dynamodb.New(sess)
 
-	// リポジトリのセットアップ
-	thumbnailRepo := persistence.NewDynamoDBThumbnailRepository(dbClient, cfg.MetadataTableName)
-	storageRepo := storage.NewS3StorageRepository(s3Client, cfg.AWSRegion)
+	// インフラストラクチャレイヤーのセットアップ
+	thumbnailRepo := thumbnailmanagement.NewDynamoDBThumbnailRepository(dbClient, cfg.MetadataTableName)
+	storageService := s3storage.NewS3ThumbnailStorageService(s3Client, cfg.AWSRegion)
+	processingService := imaging.NewImageProcessingService()
+	eventDispatcher := dispatcher.NewSimpleEventDispatcher()
 
-	// サービスのセットアップ
-	imageService := imaging.NewImageService()
+	// アプリケーションレイヤーのセットアップ
+	thumbnailUsecase := usecase.NewThumbnailGenerationUsecase(
+		thumbnailRepo,
+		storageService,
+		processingService,
+		eventDispatcher,
+		thumbnailSize,
+		cfg.AWSRegion,
+	)
 
-	// ユースケースのセットアップ
-	thumbnailUsecase := usecase.NewThumbnailUsecase(thumbnailRepo, storageRepo, imageService, cfg.AWSRegion, thumbnailSize)
-
-	// ハンドラのセットアップ
-	thumbnailHandler := handler.NewThumbnailHandler(thumbnailUsecase)
+	// インターフェースレイヤーのセットアップ
+	// S3イベント用のハンドラー
+	thumbnailHandler := s3handler.NewThumbnailHandler(thumbnailUsecase, logger)
 
 	// ミドルウェア設定の作成
-	// 注意: サムネイル関数はS3イベントを受け取るため、認証ミドルウェアは不要
 	middlewareCfg := middleware.NewDefaultMiddlewareConfig()
 	middlewareCfg.AWSRegion = cfg.AWSRegion
 	middlewareCfg.ServiceName = "CloudPix"
