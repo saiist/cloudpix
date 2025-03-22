@@ -166,7 +166,7 @@ func (r *DynamoDBImageRepository) Find(ctx context.Context, options repository.I
 
 	// 日付フィルター
 	if options.UploadDateBefore != "" {
-		dateFilter := expression.Name("UploadDate").LessThanEqual(expression.Value(options.UploadDate))
+		dateFilter := expression.Name("UploadDate").LessThanEqual(expression.Value(options.UploadDateBefore))
 		if filterSet {
 			filterBuilder = filterBuilder.And(dateFilter)
 		} else {

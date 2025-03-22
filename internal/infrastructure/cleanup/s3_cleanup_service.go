@@ -353,9 +353,9 @@ type processingStats struct {
 
 // prepareOldImagesQuery はクエリ入力を準備する共通メソッド
 func (s *S3CleanupService) prepareOldImagesQuery(cutoffDateStr string) (*dynamodb.ScanInput, error) {
-	// GSIを使用するクエリではなく、スキャンを使用
 	return &dynamodb.ScanInput{
-		TableName:        aws.String(s.metadataTable),
+		TableName: aws.String(s.metadataTable),
+		// UploadDateが存在し、基準日以前のアイテムのみをスキャン
 		FilterExpression: aws.String("attribute_exists(UploadDate) AND UploadDate <= :date"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":date": {
