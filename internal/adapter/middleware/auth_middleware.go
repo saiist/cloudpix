@@ -29,19 +29,19 @@ func NewAuthMiddleware(authUsecase *usecase.AuthUsecase, logger logging.Logger) 
 }
 
 // Process は認証処理を行い、認証済みのコンテキストを返します
-func (m *AuthMiddleware) Process(ctx context.Context, event events.APIGatewayProxyRequest) (context.Context, *entity.User, events.APIGatewayProxyResponse, error) {
+func (m *AuthMiddleware) Process(ctx context.Context, event events.APIGatewayProxyRequest) (context.Context, events.APIGatewayProxyResponse, error) {
 	// Authorization ヘッダーの取得
 	authHeader, ok := event.Headers["Authorization"]
 	if !ok {
 		// 認証エラーレスポンス
 		m.logger.Warn("認証ヘッダーがありません", nil)
-		return nil, nil, m.CreateErrorResponse(401, "認証ヘッダーがありません"), nil
+		return nil, m.CreateErrorResponse(401, "認証ヘッダーがありません"), nil
 	}
 
 	// Bearer トークンの抽出
 	if !strings.HasPrefix(authHeader, "Bearer ") {
 		m.logger.Warn("無効な認証フォーマットです", nil)
-		return nil, nil, m.CreateErrorResponse(401, "無効な認証フォーマットです"), nil
+		return nil, m.CreateErrorResponse(401, "無効な認証フォーマットです"), nil
 	}
 
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
@@ -53,21 +53,21 @@ func (m *AuthMiddleware) Process(ctx context.Context, event events.APIGatewayPro
 			m.logger.Warn("無効な認証情報です", map[string]interface{}{
 				"error": err.Error(),
 			})
-			return nil, nil, m.CreateErrorResponse(401, "認証エラー: 無効なトークン"), nil
+			return nil, m.CreateErrorResponse(401, "認証エラー: 無効なトークン"), nil
 		}
 		if errors.Is(err, service.ErrUserNotFound) {
 			m.logger.Warn("ユーザーが見つかりません", nil)
-			return nil, nil, m.CreateErrorResponse(401, "認証エラー: ユーザーが見つかりません"), nil
+			return nil, m.CreateErrorResponse(401, "認証エラー: ユーザーが見つかりません"), nil
 		}
 		m.logger.Error(err, "認証処理中にエラーが発生しました", nil)
-		return nil, nil, m.CreateErrorResponse(500, "サーバーエラー"), nil
+		return nil, m.CreateErrorResponse(500, "サーバーエラー"), nil
 	}
 
 	// userDTOからentity.Userに変換
 	userID, err := valueobject.NewUserID(userDTO.UserID)
 	if err != nil {
 		m.logger.Error(err, "ユーザーIDの変換に失敗しました", nil)
-		return nil, nil, m.CreateErrorResponse(500, "サーバーエラー"), nil
+		return nil, m.CreateErrorResponse(500, "サーバーエラー"), nil
 	}
 
 	// 文字列のロールをエンティティのUserRoleに変換
@@ -101,7 +101,7 @@ func (m *AuthMiddleware) Process(ctx context.Context, event events.APIGatewayPro
 		"isAdmin":  userDTO.IsAdmin,
 	})
 
-	return newCtx, user, events.APIGatewayProxyResponse{}, nil
+	return newCtx, events.APIGatewayProxyResponse{}, nil
 }
 
 // CreateErrorResponse はエラーレスポンスを作成します

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"cloudpix/internal/application/authmanagement/usecase"
+	"cloudpix/internal/contextutil"
 	"cloudpix/internal/logging"
 	"context"
 	"fmt"
@@ -164,7 +165,7 @@ func (r *MiddlewareRegistry) RegisterAuthMiddleware(name string, authMiddleware 
 			logger := logging.FromContext(ctx)
 
 			// 認証処理
-			newCtx, user, errResp, err := authMiddleware.Process(ctx, event)
+			newCtx, errResp, err := authMiddleware.Process(ctx, event)
 			if err != nil {
 				logger.Error(err, "Authentication error", nil)
 				return events.APIGatewayProxyResponse{StatusCode: 401}, err
@@ -179,6 +180,7 @@ func (r *MiddlewareRegistry) RegisterAuthMiddleware(name string, authMiddleware 
 			}
 
 			// 認証済みコンテキストでハンドラー実行
+			user, _ := contextutil.GetUserInfo(ctx)
 			if user != nil {
 				// ユーザー情報をロガーに追加
 				logger = logger.WithUserID(user.ID.String())

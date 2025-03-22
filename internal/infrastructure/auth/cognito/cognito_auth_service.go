@@ -21,6 +21,7 @@ func NewCognitoAuthService(region, userPoolID, clientID string) service.AuthServ
 }
 
 // VerifyCredentials は認証情報を検証し、ユーザー情報を返します
+// TODO: 認証フローの一部として別のエンドポイントやユースケースから呼び出されるタイミングで使用する
 func (s *CognitoAuthService) VerifyCredentials(ctx context.Context, credentials valueobject.Credentials) (*entity.User, error) {
 	// クレデンシャルのタイプをチェック
 	if credentials.TokenType() != valueobject.BearerToken {
