@@ -28,7 +28,8 @@ cloudpix/
   │   ├── upload/          # 画像アップロード機能
   │   ├── list/            # 画像一覧取得機能
   │   ├── thumbnail/       # サムネイル生成機能
-  │   └── tags/            # タグ管理機能
+  │   ├── tags/            # タグ管理機能
+  │   └── cleanup/         # 古い画像のクリーンアップ機能
   ├── internal/            # 内部パッケージ
   │   ├── domain/          # ドメイン層
   │   │   ├── imagemanagement/   # 画像管理ドメイン
@@ -46,6 +47,7 @@ cloudpix/
   │   │   ├── storage/     # S3実装
   │   │   ├── imaging/     # 画像処理実装
   │   │   ├── auth/        # 認証実装
+  │   │   ├── cleanup/     # クリーンアップ実装
   │   │   └── metrics/     # メトリクス収集
   │   └── adapter/         # アダプター層
   │       ├── api/         # APIハンドラー
@@ -70,17 +72,20 @@ cloudpix/
 - **cloudpix-list** - DynamoDBからメタデータを取得し画像一覧を提供する関数
 - **cloudpix-thumbnail** - アップロードされた画像のサムネイルを自動生成する関数
 - **cloudpix-tags** - 画像のタグを追加・削除・一覧取得する関数
+- **cloudpix-cleanup** - 古い画像を自動的にアーカイブする関数
 
 ### 3. S3バケット
 - **cloudpix-images-{random_suffix}** - アップロードされた画像を保存
   - `uploads/` - 元の画像ファイル
   - `thumbnails/` - 自動生成されたサムネイル
+  - `archive/` - アーカイブされた古い画像
 
 ### 4. DynamoDBテーブル
 - **cloudpix-metadata** - 画像のメタデータを保存
   - `ImageID` (パーティションキー) - 画像の一意識別子
   - `UploadDate` (GSIキー) - アップロード日付によるクエリを可能にする
   - `Owner` (GSIキー) - ユーザーIDによるクエリを可能にする
+  - `ImageStatus` - 画像の状態（ACTIVE, ARCHIVED など）
   - サムネイル情報も同じレコードに保存
 - **cloudpix-tags** - 画像のタグ情報を保存
   - `TagName` (パーティションキー) - タグ名
@@ -90,13 +95,18 @@ cloudpix/
 ### 5. S3イベント通知
 - 画像がアップロードされると自動的にサムネイル生成関数を起動
 
-### 6. ECRリポジトリ
+### 6. EventBridge (CloudWatch Events)
+- 定期的にクリーンアップ関数を実行（毎日深夜0時）
+- 保持期間を超えた古い画像を自動的にアーカイブ処理
+
+### 7. ECRリポジトリ
 - **cloudpix-upload** - アップロード関数用のコンテナイメージを格納
 - **cloudpix-list** - 一覧表示関数用のコンテナイメージを格納
 - **cloudpix-thumbnail** - サムネイル生成関数用のコンテナイメージを格納
 - **cloudpix-tags** - タグ管理関数用のコンテナイメージを格納
+- **cloudpix-cleanup** - クリーンアップ関数用のコンテナイメージを格納
 
-### 7. 認証システム (Amazon Cognito)
+### 8. 認証システム (Amazon Cognito)
 - **ユーザープール** - ユーザーの登録、認証、管理
 - **クライアントアプリ** - フロントエンドアプリケーション用の認証設定
 - **ユーザーグループ**
@@ -105,7 +115,7 @@ cloudpix/
   - StandardUsers - 一般ユーザー
 - **JWT認証** - JWTトークンを使用したAPIアクセス制御
 
-### 8. メトリクス収集と監視
+### 9. メトリクス収集と監視
 - **CloudWatch Logs** - 構造化ログ記録
 - **CloudWatch Metrics** - カスタムメトリクス収集
 - **CloudWatch Alarms** - 異常検知とアラート通知
@@ -122,6 +132,7 @@ cloudpix/
 - **FileName, ContentType, ImageSize, UploadDate**: 画像に関する値オブジェクト
 - **StorageService**: 画像ストレージサービスインターフェース
 - **ImageRepository**: 画像リポジトリインターフェース
+- **CleanupService**: 古い画像のクリーンアップサービスインターフェース
 
 #### サムネイル管理
 - **Thumbnail**: サムネイル情報を表すエンティティ
@@ -177,6 +188,7 @@ cloudpix/
 - **構造化ロギング** - JSON形式の構造化ログでリクエスト追跡と問題診断を強化
 - **分散トレーシング** - AWS X-Rayによる関数間の呼び出し追跡
 - **アラート通知** - 重要な問題が発生した際のSNS通知
+- **自動クリーンアップ** - 設定した保持期間より古い画像を自動的にアーカイブ処理
 
 ## コマンド一覧
 
@@ -218,6 +230,17 @@ make api-test-list-tags
 ## タグによる画像検索テスト
 make api-test-search-by-tag
 
+# クリーンアップ関連
+
+## クリーンアップテストデータのセットアップ
+make api-setup-cleanup-test
+
+## クリーンアップ関数の実行テスト
+make api-run-cleanup-test
+
+## クリーンアップ結果の検証
+make api-verify-cleanup-test
+
 # Lambda関数コード更新
 
 ## アップロード関数のコード更新
@@ -231,6 +254,9 @@ make update-thumbnail-code
 
 ## タグ管理関数のコード更新
 make update-tags-code
+
+## クリーンアップ関数のコード更新
+make update-cleanup-code
 ```
 
 ## プロジェクトのセットアップと実行
@@ -277,6 +303,11 @@ make api-test-upload
 
 # アップロードされた画像の一覧取得
 make api-test-list
+
+# クリーンアップ機能のテスト
+make api-setup-cleanup-test
+make api-run-cleanup-test
+make api-verify-cleanup-test
 ```
 
 ## 設計上の考慮点
@@ -287,6 +318,7 @@ make api-test-list
 - **マイクロサービス**: 各機能を独立したLambda関数として実装
 - **Infrastructure as Code**: Terraformによるインフラの完全自動化
 - **詳細なモニタリング**: トラブルシューティングと性能最適化のため
+- **自動データライフサイクル管理**: 古いデータの自動アーカイブにより運用コスト最適化
 
 ## 今後の拡張予定
 
@@ -294,6 +326,6 @@ make api-test-list
 - 詳細なアクセス制御（所有者ベースの権限管理）
 - フロントエンドインターフェース
 - 複雑な検索クエリ（複数タグの組み合わせなど）
-- バッチ処理機能（定期的なクリーンアップなど）
+- バッチ処理機能のさらなる拡張（アーカイブデータの完全削除など）
 - メトリクス収集と監視機能の強化
 - ソーシャルログイン連携（Google、Facebook等）
