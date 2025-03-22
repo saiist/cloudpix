@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"cloudpix/internal/application/authmanagement/usecase"
 	"cloudpix/internal/logging"
 	"context"
 	"fmt"
@@ -156,7 +157,7 @@ func (r *MiddlewareRegistry) RegisterLoggingMiddleware(name string, logger loggi
 }
 
 // RegisterAuthMiddleware は認証ミドルウェアを登録する
-func (r *MiddlewareRegistry) RegisterAuthMiddleware(name string, authMiddleware AuthMiddleware) {
+func (r *MiddlewareRegistry) RegisterAuthMiddleware(name string, authMiddleware *AuthMiddleware) {
 	r.Register(name, func(next HandlerFunc) HandlerFunc {
 		return func(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 			// コンテキストからロガーを取得
@@ -235,22 +236,18 @@ func (r *MiddlewareRegistry) RegisterMetricsMiddleware(name string, metricsMiddl
 }
 
 // RegisterStandardMiddlewares は標準的なミドルウェアを一括で登録する
-func (r *MiddlewareRegistry) RegisterStandardMiddlewares(sess *session.Session, cfg *MiddlewareConfig) {
+func (r *MiddlewareRegistry) RegisterStandardMiddlewares(
+	sess *session.Session,
+	cfg *MiddlewareConfig,
+	authUsecase *usecase.AuthUsecase,
+	logger logging.Logger,
+) {
 	// 設定を保存
 	r.SetConfig(cfg)
-
-	// ロガーを初期化
-	logger := logging.GetLogger("MiddlewareRegistry")
 
 	// ログミドルウェアの登録（常に最初に実行されるよう登録）
 	if cfg.LoggingEnabled {
 		r.RegisterLoggingMiddleware("logging", logger)
-	}
-
-	// 認証ミドルウェアの登録
-	if cfg.AuthEnabled {
-		authMiddleware := CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.ClientID)
-		r.RegisterAuthMiddleware("auth", authMiddleware)
 	}
 
 	// メトリクスミドルウェアの登録
@@ -263,6 +260,12 @@ func (r *MiddlewareRegistry) RegisterStandardMiddlewares(sess *session.Session, 
 			cfg.MetricsConfig,
 		)
 		r.RegisterMetricsMiddleware("metrics", metricsMiddleware)
+	}
+
+	// 認証ミドルウェアの登録
+	if cfg.AuthEnabled {
+		authMiddleware := NewAuthMiddleware(authUsecase, logger)
+		r.RegisterAuthMiddleware("auth", authMiddleware)
 	}
 
 	// 追加のミドルウェアを登録

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cloudpix/cmd/shared"
 	"cloudpix/config"
 	"cloudpix/internal/adapter/api/handler"
 	"cloudpix/internal/adapter/middleware"
@@ -49,6 +50,9 @@ func main() {
 	// S3とDynamoDBクライアントの初期化
 	s3Client := s3.New(sess)
 	dbClient := dynamodb.New(sess)
+	logger.Info("DynamoDB client initialized", map[string]interface{}{
+		"tableName": cfg.MetadataTableName,
+	})
 
 	// インフラストラクチャレイヤーのセットアップ
 	imageRepo := imagemanagement.NewDynamoDBImageRepository(dbClient, cfg.MetadataTableName)
@@ -83,11 +87,14 @@ func main() {
 		middlewareCfg.IncludeBody = false
 	}
 
+	// 認証コンポーネントの初期化
+	authUsecase := shared.InitAuth(cfg, sess, logger)
+
 	// ミドルウェアレジストリの取得
 	registry := middleware.GetRegistry()
 
 	// 標準ミドルウェアを登録
-	registry.RegisterStandardMiddlewares(sess, middlewareCfg)
+	registry.RegisterStandardMiddlewares(sess, middlewareCfg, authUsecase, logger)
 
 	// ミドルウェア名の順序を指定
 	middlewareNames := []string{"logging", "metrics", "auth"}

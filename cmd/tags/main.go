@@ -2,6 +2,7 @@
 package main
 
 import (
+	"cloudpix/cmd/shared"
 	"cloudpix/config"
 	"cloudpix/internal/adapter/api/handler"
 	"cloudpix/internal/adapter/middleware"
@@ -83,11 +84,14 @@ func main() {
 		middlewareCfg.IncludeBody = false
 	}
 
+	// 認証コンポーネントの初期化
+	authUsecase := shared.InitAuth(cfg, sess, logger)
+
 	// ミドルウェアレジストリの取得
 	registry := middleware.GetRegistry()
 
 	// 標準ミドルウェアを登録
-	registry.RegisterStandardMiddlewares(sess, middlewareCfg)
+	registry.RegisterStandardMiddlewares(sess, middlewareCfg, authUsecase, logger)
 
 	// ミドルウェア名の順序を指定（ロギングが最初、認証が最後）
 	middlewareNames := []string{"logging", "metrics", "auth"}

@@ -1,13 +1,14 @@
+// cmd/list/main.go
 package main
 
 import (
+	"cloudpix/cmd/shared"
 	"cloudpix/config"
-	"cloudpix/internal/adapter/handler"
+	"cloudpix/internal/adapter/api/handler"
 	"cloudpix/internal/adapter/middleware"
-	"cloudpix/internal/infrastructure/persistence"
+	"cloudpix/internal/application/imagemanagement/usecase"
+	"cloudpix/internal/infrastructure/persistence/dynamodb/imagemanagement"
 	"cloudpix/internal/logging"
-	"cloudpix/internal/usecase"
-	"fmt"
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -32,8 +33,6 @@ func main() {
 		"config": map[string]string{
 			"metadataTable": cfg.MetadataTableName,
 			"environment":   cfg.Environment,
-			"enableMetrics": fmt.Sprint(cfg.EnableMetrics),
-			"enableXRay":    fmt.Sprint(cfg.EnableXRay),
 		},
 	})
 
@@ -52,13 +51,13 @@ func main() {
 	})
 
 	// リポジトリのセットアップ
-	metaRepo := persistence.NewDynamoDBMetadataRepository(dbClient, cfg.MetadataTableName)
+	imageRepo := imagemanagement.NewDynamoDBImageRepository(dbClient, cfg.MetadataTableName)
 
 	// ユースケースのセットアップ
-	metaUsecase := usecase.NewMetadataUsecase(metaRepo)
+	listUsecase := usecase.NewListUsecase(imageRepo)
 
 	// ハンドラのセットアップ
-	metaHandler := handler.NewListHandler(metaUsecase)
+	listHandler := handler.NewListHandler(listUsecase)
 
 	// ミドルウェア設定の作成
 	middlewareCfg := middleware.NewDefaultMiddlewareConfig()
@@ -68,6 +67,7 @@ func main() {
 	middlewareCfg.ServiceName = "CloudPix"
 	middlewareCfg.OperationName = "ListImages"
 	middlewareCfg.FunctionName = "ListLambda"
+	middlewareCfg.AuthEnabled = true // 認証を有効化
 
 	// 環境に基づくログ詳細度の設定
 	if cfg.Environment == "dev" {
@@ -82,11 +82,14 @@ func main() {
 		middlewareCfg.IncludeBody = false
 	}
 
+	// 認証コンポーネントの初期化
+	authUsecase := shared.InitAuth(cfg, sess, logger)
+
 	// ミドルウェアレジストリの取得
 	registry := middleware.GetRegistry()
 
 	// 標準ミドルウェアを登録
-	registry.RegisterStandardMiddlewares(sess, middlewareCfg)
+	registry.RegisterStandardMiddlewares(sess, middlewareCfg, authUsecase, logger)
 
 	// ミドルウェア名の順序を指定（ロギングが最初、認証が最後）
 	middlewareNames := []string{"logging", "metrics", "auth"}
@@ -95,7 +98,7 @@ func main() {
 	chain := registry.BuildChain(middlewareNames)
 
 	// ハンドラーにミドルウェアを適用
-	wrappedHandler := chain.Then(metaHandler.Handle)
+	wrappedHandler := chain.Then(listHandler.Handle)
 
 	// Lambda関数のスタート
 	lambda.Start(wrappedHandler)

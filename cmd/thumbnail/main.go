@@ -90,7 +90,7 @@ func main() {
 	registry := middleware.GetRegistry()
 
 	// 標準ミドルウェアを登録（認証なし）
-	registry.RegisterStandardMiddlewares(sess, middlewareCfg)
+	registry.RegisterStandardMiddlewares(sess, middlewareCfg, nil, logger)
 
 	// S3イベント用のミドルウェア処理
 	// ここではS3イベント用のカスタムアダプターが必要
