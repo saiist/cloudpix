@@ -1,15 +1,15 @@
 package main
 
 import (
-	"log"
-
 	"cloudpix/config"
 	"cloudpix/internal/adapter/handler"
 	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/infrastructure/imaging"
 	"cloudpix/internal/infrastructure/persistence"
 	"cloudpix/internal/infrastructure/storage"
+	"cloudpix/internal/logging"
 	"cloudpix/internal/usecase"
+	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -22,22 +22,37 @@ import (
 const thumbnailSize = 200
 
 func main() {
+	// 環境変数の設定（必要に応じて）
+	if os.Getenv("ENVIRONMENT") == "dev" {
+		os.Setenv("LOG_LEVEL", "debug")
+	}
+
+	// ロギングの初期化
+	logging.InitLogging()
+	logger := logging.GetLogger("ThumbnailLambda")
+
 	// 設定の読み込み
 	cfg := config.NewConfig()
+	logger.Info("Starting Thumbnail Lambda", map[string]interface{}{
+		"config": map[string]string{
+			"bucketName":    cfg.S3BucketName,
+			"metadataTable": cfg.MetadataTableName,
+			"environment":   cfg.Environment,
+		},
+		"thumbnailSize": thumbnailSize,
+	})
 
 	// AWS セッションの初期化
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(cfg.AWSRegion),
 	})
 	if err != nil {
-		log.Printf("Error creating AWS session: %s", err)
+		logger.Fatal(err, "Error creating AWS session", nil)
 	}
 
 	// S3とDynamoDBクライアントの初期化
 	s3Client := s3.New(sess)
 	dbClient := dynamodb.New(sess)
-
-	log.Printf("Thumbnail Lambda initialized with bucket: %s, thumbnail size: %d", cfg.S3BucketName, thumbnailSize)
 
 	// リポジトリのセットアップ
 	thumbnailRepo := persistence.NewDynamoDBThumbnailRepository(dbClient, cfg.MetadataTableName)
@@ -49,18 +64,29 @@ func main() {
 	// ユースケースのセットアップ
 	thumbnailUsecase := usecase.NewThumbnailUsecase(thumbnailRepo, storageRepo, imageService, cfg.AWSRegion, thumbnailSize)
 
+	// ハンドラのセットアップ
+	thumbnailHandler := handler.NewThumbnailHandler(thumbnailUsecase)
+
 	// ミドルウェア設定の作成
+	// 注意: サムネイル関数はS3イベントを受け取るため、認証ミドルウェアは不要
 	middlewareCfg := middleware.NewDefaultMiddlewareConfig()
 	middlewareCfg.AWSRegion = cfg.AWSRegion
 	middlewareCfg.ServiceName = "CloudPix"
 	middlewareCfg.OperationName = "GenerateThumbnail"
 	middlewareCfg.FunctionName = "ThumbnailLambda"
 
-	// ハンドラーファクトリの作成
-	handlerFactory := middleware.NewHandlerFactory(middlewareCfg).WithAWSSession(sess)
+	// 認証は不要（S3イベント起動のため）
+	middlewareCfg.AuthEnabled = false
 
-	// ハンドラのセットアップ
-	thumbnailHandler := handler.NewThumbnailHandler(thumbnailUsecase)
+	// ミドルウェアレジストリの取得
+	registry := middleware.GetRegistry()
+
+	// 標準ミドルウェアを登録（認証なし）
+	registry.RegisterStandardMiddlewares(sess, middlewareCfg)
+
+	// S3イベント用のミドルウェア処理
+	// ここではS3イベント用のカスタムアダプターが必要
+	handlerFactory := middleware.NewHandlerFactory(middlewareCfg).WithAWSSession(sess)
 
 	// ミドルウェアを適用したS3イベントハンドラーを作成
 	wrappedHandler := handlerFactory.WrapS3EventHandler(thumbnailHandler.Handle)

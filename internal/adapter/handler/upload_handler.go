@@ -2,10 +2,10 @@ package handler
 
 import (
 	"cloudpix/internal/domain/model"
+	"cloudpix/internal/logging"
 	"cloudpix/internal/usecase"
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -25,26 +25,46 @@ func NewUploadHandler(uploadUsecase *usecase.UploadUsecase) *UploadHandler {
 
 // Handle はAPI Gatewayからのリクエストを処理する
 func (h *UploadHandler) Handle(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	log.Printf("Received upload request: %s", event.Body)
+	logger := logging.FromContext(ctx)
 
 	// リクエストボディを解析
 	var request model.UploadRequest
 	if err := json.Unmarshal([]byte(event.Body), &request); err != nil {
-		log.Printf("Failed to unmarshal request: %v", err)
+		logger.Error(err, "Failed to unmarshal request", nil)
 		return h.createErrorResponse(http.StatusBadRequest, "不正なリクエスト形式")
 	}
+
+	// アップロード前のコンテキスト情報
+	uploadCtx := logging.UploadContext{
+		FileName:    request.FileName,
+		ContentType: request.ContentType,
+	}
+
+	logger.Info("Processing upload", map[string]interface{}{
+		"upload": uploadCtx,
+	})
 
 	// アップロード処理実行
 	response, err := h.uploadUsecase.ProcessUpload(ctx, &request)
 	if err != nil {
-		log.Printf("Upload error: %v", err)
+		logger.Error(err, "Upload error", map[string]interface{}{
+			"upload": uploadCtx,
+		})
 		return h.createErrorResponse(http.StatusInternalServerError, "アップロード処理中にエラーが発生しました")
 	}
+
+	// 成功時のコンテキスト情報
+	uploadCtx.ImageID = response.ImageID
+
+	logger.Info("Upload successful", map[string]interface{}{
+		"upload":  uploadCtx,
+		"imageId": response.ImageID,
+	})
 
 	// レスポンスのJSON変換
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
-		log.Printf("Failed to marshal response: %v", err)
+		logger.Error(err, "Failed to marshal response", nil)
 		return h.createErrorResponse(http.StatusInternalServerError, "レスポンス生成中にエラーが発生しました")
 	}
 

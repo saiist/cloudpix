@@ -1,14 +1,15 @@
 package main
 
 import (
-	"log"
-
 	"cloudpix/config"
 	"cloudpix/internal/adapter/handler"
 	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/infrastructure/persistence"
 	"cloudpix/internal/infrastructure/storage"
+	"cloudpix/internal/logging"
 	"cloudpix/internal/usecase"
+	"fmt"
+	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,22 +19,39 @@ import (
 )
 
 func main() {
+	// 環境変数の設定（ロギングシステムの初期化前に必要な場合）
+	// 例: 開発環境ではデバッグログを有効化
+	if os.Getenv("ENVIRONMENT") == "dev" {
+		os.Setenv("LOG_LEVEL", "debug")
+	}
+
+	// ロギングの初期化
+	logging.InitLogging()
+	logger := logging.GetLogger("UploadLambda")
+
 	// 設定の読み込み
 	cfg := config.NewConfig()
+	logger.Info("Starting Upload Lambda", map[string]interface{}{
+		"config": map[string]string{
+			"bucketName":    cfg.S3BucketName,
+			"metadataTable": cfg.MetadataTableName,
+			"environment":   cfg.Environment,
+			"enableMetrics": fmt.Sprint(cfg.EnableMetrics),
+			"enableXRay":    fmt.Sprint(cfg.EnableXRay),
+		},
+	})
 
 	// AWS セッションの初期化
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(cfg.AWSRegion),
 	})
 	if err != nil {
-		log.Printf("Error creating AWS session: %s", err)
+		logger.Fatal(err, "Error creating AWS session", nil)
 	}
 
 	// S3とDynamoDBクライアントの初期化
 	s3Client := s3.New(sess)
 	dbClient := dynamodb.New(sess)
-
-	log.Printf("Upload Lambda initialized with bucket: %s, table: %s", cfg.S3BucketName, cfg.MetadataTableName)
 
 	// リポジトリのセットアップ
 	storageRepo := storage.NewS3StorageRepository(s3Client, cfg.AWSRegion)
@@ -54,11 +72,34 @@ func main() {
 	middlewareCfg.OperationName = "UploadImage"
 	middlewareCfg.FunctionName = "UploadLambda"
 
-	// ハンドラーファクトリの作成
-	handlerFactory := middleware.NewHandlerFactory(middlewareCfg).WithAWSSession(sess)
+	// 環境に基づくログ詳細度の設定
+	if cfg.Environment == "dev" {
+		middlewareCfg.DetailedRequestLog = true
+		middlewareCfg.DetailedResponseLog = true
+		middlewareCfg.IncludeHeaders = true
+		middlewareCfg.IncludeBody = true
+	} else {
+		// 本番環境では最小限のログ
+		middlewareCfg.DetailedRequestLog = false
+		middlewareCfg.DetailedResponseLog = false
+		middlewareCfg.IncludeHeaders = false
+		middlewareCfg.IncludeBody = false
+	}
 
-	// ミドルウェアを適用したハンドラーを作成
-	wrappedHandler := handlerFactory.WrapAPIGatewayHandler(uploadHandler.Handle)
+	// ミドルウェアレジストリの取得
+	registry := middleware.GetRegistry()
+
+	// 標準ミドルウェアを登録
+	registry.RegisterStandardMiddlewares(sess, middlewareCfg)
+
+	// ミドルウェア名の順序を指定（ロギングが最初、認証が最後）
+	middlewareNames := []string{"logging", "metrics", "auth"}
+
+	// ミドルウェアチェーンの構築
+	chain := registry.BuildChain(middlewareNames)
+
+	// ハンドラーにミドルウェアを適用
+	wrappedHandler := chain.Then(uploadHandler.Handle)
 
 	// Lambda関数のスタート
 	lambda.Start(wrappedHandler)

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"cloudpix/internal/contextutil"
 	"cloudpix/internal/infrastructure/metrics"
 	"context"
 	"log"
@@ -131,7 +132,7 @@ func (m *MetricsMiddleware) StartTiming(ctx context.Context) func(context.Contex
 		}
 
 		// ユーザー情報があればユーザー別メトリクスを追加
-		userInfo, _ := GetUserInfo(ctx)
+		userInfo, _ := contextutil.GetUserInfo(ctx)
 		if userInfo != nil {
 			// ユーザー別メトリクス
 			userDimensions := m.createUserDimensions(userInfo.UserID)

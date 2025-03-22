@@ -109,13 +109,6 @@ func (f *HandlerFactory) WrapS3EventHandler(handler func(context.Context, events
 	return handler
 }
 
-// Count はレジストリに登録されているミドルウェアの数を返す
-func (r *MiddlewareRegistry) Count() int {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return len(r.middlewares)
-}
-
 // withMetricsForThumbnail はメトリクス収集ミドルウェアをS3イベントハンドラーに適用する
 func withMetricsForThumbnail(metricsMiddleware *MetricsMiddleware,
 	handler func(ctx context.Context, s3Event events.S3Event) error) func(ctx context.Context, s3Event events.S3Event) error {

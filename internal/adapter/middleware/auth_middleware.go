@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 
+	"cloudpix/internal/contextutil"
 	"cloudpix/internal/domain/model"
 	"cloudpix/internal/domain/repository"
 
@@ -49,15 +50,9 @@ func (m *CognitoAuthMiddleware) Process(ctx context.Context, event events.APIGat
 	}
 
 	// ユーザー情報をコンテキストに追加
-	newCtx := context.WithValue(ctx, AuthContext{}, userInfo)
+	newCtx := contextutil.WithUserInfo(ctx, userInfo)
 
 	return newCtx, userInfo, events.APIGatewayProxyResponse{}, nil
-}
-
-// GetUserInfo はコンテキストからユーザー情報を取得するヘルパー関数
-func GetUserInfo(ctx context.Context) (*model.UserInfo, bool) {
-	userInfo, ok := ctx.Value(AuthContext{}).(*model.UserInfo)
-	return userInfo, ok
 }
 
 // CreateErrorResponse はエラーレスポンスを作成する

@@ -1,13 +1,14 @@
 package main
 
 import (
-	"log"
-
 	"cloudpix/config"
 	"cloudpix/internal/adapter/handler"
 	"cloudpix/internal/adapter/middleware"
 	"cloudpix/internal/infrastructure/persistence"
+	"cloudpix/internal/logging"
 	"cloudpix/internal/usecase"
+	"fmt"
+	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -16,20 +17,39 @@ import (
 )
 
 func main() {
+	// 環境変数の設定（ロギングシステムの初期化前に必要な場合）
+	if os.Getenv("ENVIRONMENT") == "dev" {
+		os.Setenv("LOG_LEVEL", "debug")
+	}
+
+	// ロギングの初期化
+	logging.InitLogging()
+	logger := logging.GetLogger("ListLambda")
+
 	// 設定の読み込み
 	cfg := config.NewConfig()
+	logger.Info("Starting List Lambda", map[string]interface{}{
+		"config": map[string]string{
+			"metadataTable": cfg.MetadataTableName,
+			"environment":   cfg.Environment,
+			"enableMetrics": fmt.Sprint(cfg.EnableMetrics),
+			"enableXRay":    fmt.Sprint(cfg.EnableXRay),
+		},
+	})
 
 	// AWS セッションの初期化
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(cfg.AWSRegion),
 	})
 	if err != nil {
-		log.Printf("Error creating AWS session: %s", err)
+		logger.Fatal(err, "Error creating AWS session", nil)
 	}
 
 	// DynamoDBクライアントの初期化
 	dbClient := dynamodb.New(sess)
-	log.Printf("List Lambda initialized with tables: Metadata=%s", cfg.MetadataTableName)
+	logger.Info("DynamoDB client initialized", map[string]interface{}{
+		"tableName": cfg.MetadataTableName,
+	})
 
 	// リポジトリのセットアップ
 	metaRepo := persistence.NewDynamoDBMetadataRepository(dbClient, cfg.MetadataTableName)
@@ -49,11 +69,33 @@ func main() {
 	middlewareCfg.OperationName = "ListImages"
 	middlewareCfg.FunctionName = "ListLambda"
 
-	// ハンドラーファクトリの作成
-	handlerFactory := middleware.NewHandlerFactory(middlewareCfg).WithAWSSession(sess)
+	// 環境に基づくログ詳細度の設定
+	if cfg.Environment == "dev" {
+		middlewareCfg.DetailedRequestLog = true
+		middlewareCfg.DetailedResponseLog = true
+		middlewareCfg.IncludeQueryParams = true
+	} else {
+		// 本番環境では最小限のログ（ボディなし、クエリパラメータのみ）
+		middlewareCfg.DetailedRequestLog = false
+		middlewareCfg.DetailedResponseLog = false
+		middlewareCfg.IncludeQueryParams = true
+		middlewareCfg.IncludeBody = false
+	}
 
-	// ミドルウェアを適用したハンドラーを作成
-	wrappedHandler := handlerFactory.WrapAPIGatewayHandler(metaHandler.Handle)
+	// ミドルウェアレジストリの取得
+	registry := middleware.GetRegistry()
+
+	// 標準ミドルウェアを登録
+	registry.RegisterStandardMiddlewares(sess, middlewareCfg)
+
+	// ミドルウェア名の順序を指定（ロギングが最初、認証が最後）
+	middlewareNames := []string{"logging", "metrics", "auth"}
+
+	// ミドルウェアチェーンの構築
+	chain := registry.BuildChain(middlewareNames)
+
+	// ハンドラーにミドルウェアを適用
+	wrappedHandler := chain.Then(metaHandler.Handle)
 
 	// Lambda関数のスタート
 	lambda.Start(wrappedHandler)

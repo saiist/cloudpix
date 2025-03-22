@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"cloudpix/internal/logging"
 	"context"
+	"fmt"
 	"log"
 	"sync"
 
@@ -24,6 +26,7 @@ type CleanupableMiddleware interface {
 type MiddlewareRegistry struct {
 	middlewares        map[string]Middleware
 	cleanupMiddlewares map[string]CleanupableMiddleware
+	config             *MiddlewareConfig
 	mu                 sync.RWMutex
 }
 
@@ -47,6 +50,13 @@ func NewMiddlewareRegistry() *MiddlewareRegistry {
 		middlewares:        make(map[string]Middleware),
 		cleanupMiddlewares: make(map[string]CleanupableMiddleware),
 	}
+}
+
+// SetConfig はミドルウェアレジストリの設定を更新する
+func (r *MiddlewareRegistry) SetConfig(config *MiddlewareConfig) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.config = config
 }
 
 // Register はミドルウェアをレジストリに登録する
@@ -93,24 +103,96 @@ func (r *MiddlewareRegistry) BuildChain(middlewareNames []string) *Chain {
 	return chain
 }
 
+// Cleanup はすべてのクリーンアップ可能なミドルウェアのリソースを解放する
+func (r *MiddlewareRegistry) Cleanup() {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for name, middleware := range r.cleanupMiddlewares {
+		if err := middleware.Cleanup(); err != nil {
+			log.Printf("Error cleaning up middleware '%s': %v", name, err)
+		} else {
+			log.Printf("Successfully cleaned up middleware: %s", name)
+		}
+	}
+}
+
+// RegisterLoggingMiddleware はロギングミドルウェアを登録する
+func (r *MiddlewareRegistry) RegisterLoggingMiddleware(name string, logger logging.Logger) {
+	// ロギング設定
+	loggingConfig := logging.NewLoggingMiddlewareConfig(logger)
+
+	// 環境設定に基づいて調整
+	if r.config != nil {
+		if r.config.DetailedRequestLog {
+			loggingConfig.LogRequestBody = true
+			loggingConfig.LogRequestHeaders = true
+		}
+		if r.config.DetailedResponseLog {
+			loggingConfig.LogResponseBody = true
+		}
+		if r.config.IncludeHeaders {
+			loggingConfig.LogRequestHeaders = true
+		}
+		if !r.config.IncludeBody {
+			loggingConfig.LogRequestBody = false
+			loggingConfig.LogResponseBody = false
+		}
+
+		// 機密ヘッダーの設定
+		if len(r.config.SensitiveHeaderNames) > 0 {
+			loggingConfig.SensitiveHeaders = r.config.SensitiveHeaderNames
+		}
+
+		// 最大ボディログ長の設定
+		if r.config.MaxBodyLogLength > 0 {
+			loggingConfig.MaxBodyLogLength = r.config.MaxBodyLogLength
+		}
+	}
+
+	loggingMiddleware := LoggingMiddleware(loggingConfig)
+
+	r.Register(name, loggingMiddleware)
+}
+
 // RegisterAuthMiddleware は認証ミドルウェアを登録する
 func (r *MiddlewareRegistry) RegisterAuthMiddleware(name string, authMiddleware AuthMiddleware) {
 	r.Register(name, func(next HandlerFunc) HandlerFunc {
 		return func(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+			// コンテキストからロガーを取得
+			logger := logging.FromContext(ctx)
+
 			// 認証処理
 			newCtx, userInfo, errResp, err := authMiddleware.Process(ctx, event)
 			if err != nil {
-				log.Printf("Authentication error: %v", err)
+				logger.Error(err, "Authentication error", nil)
 				return events.APIGatewayProxyResponse{StatusCode: 401}, err
 			}
 
 			// エラーレスポンスが設定されている場合（認証失敗）
 			if errResp.StatusCode != 0 {
+				logger.Warn("Authentication failed", map[string]interface{}{
+					"statusCode": errResp.StatusCode,
+				})
 				return errResp, nil
 			}
 
 			// 認証済みコンテキストでハンドラー実行
-			log.Printf("Authenticated user: %s", userInfo.UserID)
+			if userInfo != nil {
+				// ユーザー情報をロガーに追加
+				logger = logger.WithUserID(userInfo.UserID)
+
+				// ユーザー情報をコンテキストに追加
+				newCtx = logging.WithLogger(newCtx, logger)
+
+				logger.Info("User authenticated", map[string]interface{}{
+					"username":  userInfo.Username,
+					"groups":    userInfo.Groups,
+					"isAdmin":   userInfo.IsAdmin,
+					"isPremium": userInfo.IsPremium,
+				})
+			}
+
 			return next(newCtx, event)
 		}
 	})
@@ -120,6 +202,9 @@ func (r *MiddlewareRegistry) RegisterAuthMiddleware(name string, authMiddleware 
 func (r *MiddlewareRegistry) RegisterMetricsMiddleware(name string, metricsMiddleware *MetricsMiddleware) {
 	middlewareFunc := func(next HandlerFunc) HandlerFunc {
 		return func(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+			// コンテキストからロガーを取得
+			logger := logging.FromContext(ctx)
+
 			// レスポンスとエラーを格納する変数
 			var resp events.APIGatewayProxyResponse
 			var err error
@@ -127,8 +212,20 @@ func (r *MiddlewareRegistry) RegisterMetricsMiddleware(name string, metricsMiddl
 			// 処理時間計測を開始し、完了時に計測を終了する
 			defer metricsMiddleware.StartTiming(ctx)(ctx, &resp, &err)
 
+			// メトリクス収集開始をログに記録
+			logger.Debug("Starting metrics collection", nil)
+
 			// ハンドラー実行
 			resp, err = next(ctx, event)
+
+			// メトリクス収集結果をログに記録（デバッグモードの場合）
+			if logger.IsLevelEnabled(logging.LevelDebug) {
+				logger.Debug("Metrics collected", map[string]interface{}{
+					"operation": metricsMiddleware.operationName,
+					"function":  metricsMiddleware.functionName,
+				})
+			}
+
 			return resp, err
 		}
 	}
@@ -139,6 +236,17 @@ func (r *MiddlewareRegistry) RegisterMetricsMiddleware(name string, metricsMiddl
 
 // RegisterStandardMiddlewares は標準的なミドルウェアを一括で登録する
 func (r *MiddlewareRegistry) RegisterStandardMiddlewares(sess *session.Session, cfg *MiddlewareConfig) {
+	// 設定を保存
+	r.SetConfig(cfg)
+
+	// ロガーを初期化
+	logger := logging.GetLogger("MiddlewareRegistry")
+
+	// ログミドルウェアの登録（常に最初に実行されるよう登録）
+	if cfg.LoggingEnabled {
+		r.RegisterLoggingMiddleware("logging", logger)
+	}
+
 	// 認証ミドルウェアの登録
 	if cfg.AuthEnabled {
 		authMiddleware := CreateDefaultAuthMiddleware(cfg.AWSRegion, cfg.UserPoolID, cfg.ClientID)
@@ -157,16 +265,15 @@ func (r *MiddlewareRegistry) RegisterStandardMiddlewares(sess *session.Session, 
 		r.RegisterMetricsMiddleware("metrics", metricsMiddleware)
 	}
 
-	// ログミドルウェアの登録
-	r.Register("logging", LoggingMiddleware)
+	// 追加のミドルウェアを登録
+	for _, name := range cfg.AdditionalMiddlewares {
+		logger.Info(fmt.Sprintf("Registered additional middleware: %s", name), nil)
+	}
 }
 
-// LoggingMiddleware はリクエスト/レスポンスのログを取るミドルウェア
-func LoggingMiddleware(next HandlerFunc) HandlerFunc {
-	return func(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-		log.Printf("Request: %s %s", event.HTTPMethod, event.Path)
-		resp, err := next(ctx, event)
-		log.Printf("Response: status=%d, error=%v", resp.StatusCode, err)
-		return resp, err
-	}
+// Count はレジストリに登録されているミドルウェアの数を返す
+func (r *MiddlewareRegistry) Count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.middlewares)
 }

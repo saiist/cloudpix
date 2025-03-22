@@ -3,6 +3,7 @@ package usecase
 import (
 	"cloudpix/internal/domain/model"
 	"cloudpix/internal/domain/repository"
+	"cloudpix/internal/logging"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -31,6 +32,8 @@ func NewUploadUsecase(
 
 // ProcessUpload はアップロードリクエストを処理します
 func (u *UploadUsecase) ProcessUpload(ctx context.Context, request *model.UploadRequest) (*model.UploadResponse, error) {
+	logger := logging.FromContext(ctx)
+
 	// ユニークなIDを生成
 	imageID := uuid.New().String()
 	now := time.Now()
@@ -39,6 +42,11 @@ func (u *UploadUsecase) ProcessUpload(ctx context.Context, request *model.Upload
 	// オブジェクトキーを生成
 	objectKey := fmt.Sprintf("uploads/%s-%s", imageID, request.FileName)
 
+	logger.Info("Generated object key", map[string]interface{}{
+		"imageId":   imageID,
+		"objectKey": objectKey,
+	})
+
 	var downloadURL string
 	var uploadURL string
 	var imageSize int
@@ -46,6 +54,8 @@ func (u *UploadUsecase) ProcessUpload(ctx context.Context, request *model.Upload
 
 	// Base64エンコードされたデータがある場合は直接アップロード
 	if request.Data != "" {
+		logger.Info("Uploading base64 image data", nil)
+
 		var err error
 		downloadURL, err = u.storageRepo.UploadImage(
 			ctx,
@@ -55,6 +65,7 @@ func (u *UploadUsecase) ProcessUpload(ctx context.Context, request *model.Upload
 			request.Data,
 		)
 		if err != nil {
+			logger.Error(err, "Failed to upload image to S3", nil)
 			return nil, err
 		}
 		message = "Image uploaded successfully"
@@ -62,8 +73,14 @@ func (u *UploadUsecase) ProcessUpload(ctx context.Context, request *model.Upload
 		// Base64デコードしてサイズを計算
 		rawData, _ := base64Decode(request.Data)
 		imageSize = len(rawData)
+
+		logger.Info("Image uploaded successfully", map[string]interface{}{
+			"size": imageSize,
+		})
 	} else {
 		// プレサインドURLを生成
+		logger.Info("Generating presigned URL", nil)
+
 		var err error
 		uploadURL, downloadURL, err = u.storageRepo.GeneratePresignedURL(
 			ctx,
@@ -73,10 +90,13 @@ func (u *UploadUsecase) ProcessUpload(ctx context.Context, request *model.Upload
 			15*time.Minute,
 		)
 		if err != nil {
+			logger.Error(err, "Failed to generate presigned URL", nil)
 			return nil, err
 		}
 		message = "Use the uploadUrl to upload your image"
 		imageSize = 0 // プレサインドURLの場合、サイズは不明
+
+		logger.Info("Presigned URL generated", nil)
 	}
 
 	// メタデータを作成して保存
@@ -93,10 +113,13 @@ func (u *UploadUsecase) ProcessUpload(ctx context.Context, request *model.Upload
 	}
 
 	// メタデータを保存
+	logger.Info("Saving metadata", nil)
 	err := u.metadataRepo.SaveMetadata(ctx, metadata)
 	if err != nil {
+		logger.Error(err, "Failed to save metadata", nil)
 		return nil, err
 	}
+	logger.Info("Metadata saved successfully", nil)
 
 	// レスポンスを作成
 	response := &model.UploadResponse{
