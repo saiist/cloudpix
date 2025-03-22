@@ -3,8 +3,9 @@ package middleware
 import (
 	"cloudpix/internal/application/authmanagement/usecase"
 	"cloudpix/internal/contextutil"
+	"cloudpix/internal/domain/authmanagement/entity"
 	"cloudpix/internal/domain/authmanagement/service"
-	"cloudpix/internal/domain/model"
+	"cloudpix/internal/domain/authmanagement/valueobject"
 	"cloudpix/internal/logging"
 	"context"
 	"errors"
@@ -28,7 +29,7 @@ func NewAuthMiddleware(authUsecase *usecase.AuthUsecase, logger logging.Logger) 
 }
 
 // Process は認証処理を行い、認証済みのコンテキストを返します
-func (m *AuthMiddleware) Process(ctx context.Context, event events.APIGatewayProxyRequest) (context.Context, *model.UserInfo, events.APIGatewayProxyResponse, error) {
+func (m *AuthMiddleware) Process(ctx context.Context, event events.APIGatewayProxyRequest) (context.Context, *entity.User, events.APIGatewayProxyResponse, error) {
 	// Authorization ヘッダーの取得
 	authHeader, ok := event.Headers["Authorization"]
 	if !ok {
@@ -62,27 +63,45 @@ func (m *AuthMiddleware) Process(ctx context.Context, event events.APIGatewayPro
 		return nil, nil, m.CreateErrorResponse(500, "サーバーエラー"), nil
 	}
 
-	// 互換性のためにUserInfoモデルに変換
-	userInfo := &model.UserInfo{
-		UserID:    userDTO.UserID,
-		Username:  userDTO.Username,
-		Email:     userDTO.Email,
-		Groups:    userDTO.Roles,
-		IsAdmin:   userDTO.IsAdmin,
-		IsPremium: userDTO.IsPremium,
+	// userDTOからentity.Userに変換
+	userID, err := valueobject.NewUserID(userDTO.UserID)
+	if err != nil {
+		m.logger.Error(err, "ユーザーIDの変換に失敗しました", nil)
+		return nil, nil, m.CreateErrorResponse(500, "サーバーエラー"), nil
 	}
 
+	// 文字列のロールをエンティティのUserRoleに変換
+	roles := make([]entity.UserRole, 0, len(userDTO.Roles))
+	for _, roleStr := range userDTO.Roles {
+		switch roleStr {
+		case "Admin":
+			roles = append(roles, entity.RoleAdmin)
+		case "Premium":
+			roles = append(roles, entity.RolePremium)
+		default:
+			roles = append(roles, entity.RoleStandard)
+		}
+	}
+
+	// User エンティティを作成
+	user := entity.NewUser(
+		userID,
+		userDTO.Username,
+		userDTO.Email,
+		roles,
+	)
+
 	// ユーザー情報をコンテキストに追加
-	newCtx := contextutil.WithUserInfo(ctx, userInfo)
+	newCtx := contextutil.WithUserInfo(ctx, user)
 
 	// ロガーにユーザー情報を追加
 	m.logger.Info("ユーザー認証成功", map[string]interface{}{
-		"userId":   userInfo.UserID,
-		"username": userInfo.Username,
-		"isAdmin":  userInfo.IsAdmin,
+		"userId":   userDTO.UserID,
+		"username": userDTO.Username,
+		"isAdmin":  userDTO.IsAdmin,
 	})
 
-	return newCtx, userInfo, events.APIGatewayProxyResponse{}, nil
+	return newCtx, user, events.APIGatewayProxyResponse{}, nil
 }
 
 // CreateErrorResponse はエラーレスポンスを作成します

@@ -1,7 +1,7 @@
 package contextutil
 
 import (
-	"cloudpix/internal/domain/model"
+	"cloudpix/internal/domain/authmanagement/entity"
 	"context"
 )
 
@@ -14,12 +14,12 @@ const (
 )
 
 // WithUserInfo はコンテキストにユーザー情報を追加する
-func WithUserInfo(ctx context.Context, userInfo *model.UserInfo) context.Context {
+func WithUserInfo(ctx context.Context, userInfo *entity.User) context.Context {
 	return context.WithValue(ctx, UserInfoKey, userInfo)
 }
 
 // GetUserInfo はコンテキストからユーザー情報を取得する
-func GetUserInfo(ctx context.Context) (*model.UserInfo, bool) {
-	userInfo, ok := ctx.Value(UserInfoKey).(*model.UserInfo)
+func GetUserInfo(ctx context.Context) (*entity.User, bool) {
+	userInfo, ok := ctx.Value(UserInfoKey).(*entity.User)
 	return userInfo, ok
 }

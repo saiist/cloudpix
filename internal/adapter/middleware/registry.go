@@ -164,7 +164,7 @@ func (r *MiddlewareRegistry) RegisterAuthMiddleware(name string, authMiddleware 
 			logger := logging.FromContext(ctx)
 
 			// 認証処理
-			newCtx, userInfo, errResp, err := authMiddleware.Process(ctx, event)
+			newCtx, user, errResp, err := authMiddleware.Process(ctx, event)
 			if err != nil {
 				logger.Error(err, "Authentication error", nil)
 				return events.APIGatewayProxyResponse{StatusCode: 401}, err
@@ -179,18 +179,18 @@ func (r *MiddlewareRegistry) RegisterAuthMiddleware(name string, authMiddleware 
 			}
 
 			// 認証済みコンテキストでハンドラー実行
-			if userInfo != nil {
+			if user != nil {
 				// ユーザー情報をロガーに追加
-				logger = logger.WithUserID(userInfo.UserID)
+				logger = logger.WithUserID(user.ID.String())
 
 				// ユーザー情報をコンテキストに追加
 				newCtx = logging.WithLogger(newCtx, logger)
 
 				logger.Info("User authenticated", map[string]interface{}{
-					"username":  userInfo.Username,
-					"groups":    userInfo.Groups,
-					"isAdmin":   userInfo.IsAdmin,
-					"isPremium": userInfo.IsPremium,
+					"username":  user.Username,
+					"rols":      user.Roles,
+					"isAdmin":   user.IsAdmin,
+					"isPremium": user.IsPremium,
 				})
 			}
 

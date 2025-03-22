@@ -132,10 +132,10 @@ func (m *MetricsMiddleware) StartTiming(ctx context.Context) func(context.Contex
 		}
 
 		// ユーザー情報があればユーザー別メトリクスを追加
-		userInfo, _ := contextutil.GetUserInfo(ctx)
-		if userInfo != nil {
+		user, _ := contextutil.GetUserInfo(ctx)
+		if user != nil {
 			// ユーザー別メトリクス
-			userDimensions := m.createUserDimensions(userInfo.UserID)
+			userDimensions := m.createUserDimensions(user.ID.String())
 			m.metricsService.AddMetric(ctx, "UserRequests", 1.0, userDimensions)
 		}
 	}
