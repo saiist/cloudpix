@@ -46,8 +46,8 @@ resource "aws_lambda_function" "cloudpix_tags" {
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.cloudpix_tags.repository_url}:latest"
 
-  timeout     = 30
-  memory_size = 128
+  timeout     = var.lambda_timeout
+  memory_size = var.lambda_memory_size
 
   environment {
     variables = local.tags_lambda_env_vars

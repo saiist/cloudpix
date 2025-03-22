@@ -21,6 +21,7 @@ enable_xray_tracing = true
 metrics_retention_days = 14
 alarm_email = "your-email@example.com"
 dashboard_refresh_interval = 300
+image_retention_days=10
 
 # アラートしきい値
 lambda_error_threshold = 5

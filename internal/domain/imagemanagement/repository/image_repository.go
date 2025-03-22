@@ -9,10 +9,11 @@ import (
 
 // ImageQueryOptions は画像検索のオプションを表す構造体
 type ImageQueryOptions struct {
-	UploadDate string
-	Tags       []string
-	Limit      int
-	Offset     int
+	UploadDate       string
+	UploadDateBefore string
+	Tags             []string
+	Limit            int
+	Offset           int
 }
 
 // ImageRepository は画像集約の永続化を担当するインターフェース

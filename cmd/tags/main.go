@@ -1,4 +1,3 @@
-// cmd/tags/main.go
 package main
 
 import (

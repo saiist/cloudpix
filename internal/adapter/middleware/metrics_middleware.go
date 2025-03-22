@@ -86,26 +86,20 @@ func (m *MetricsMiddleware) createUserDimensions(userID string) []*cloudwatch.Di
 	}
 }
 
-// StartTiming は処理時間計測を開始し、終了関数を返す
-func (m *MetricsMiddleware) StartTiming(ctx context.Context) func(context.Context, interface{}, *error) {
+// 共通の時間計測基本処理を実装
+func (m *MetricsMiddleware) baseTimingMetrics(ctx context.Context, dimensions []*cloudwatch.Dimension) (time.Time, func(duration time.Duration, err *error)) {
 	// 処理開始時間を記録
 	startTime := time.Now()
 
-	// メトリクスサービスがない場合は空関数を返す
+	// メトリクスサービスがない場合は空の関数を返す
 	if m.metricsService == nil {
-		return func(ctx context.Context, result interface{}, err *error) {}
+		return startTime, func(duration time.Duration, err *error) {}
 	}
 
-	// 標準ディメンション
-	dimensions := m.createStandardDimensions()
-
 	// 終了関数を返す
-	return func(ctx context.Context, result interface{}, err *error) {
-		// 処理時間を計算
-		duration := time.Since(startTime)
-
+	return startTime, func(duration time.Duration, err *error) {
 		// 処理時間メトリクスを追加
-		m.metricsService.AddMetric(ctx, "Duration", float64(duration.Milliseconds()), dimensions)
+		m.metricsService.AddMetric(ctx, "ProcessingTime", float64(duration.Milliseconds()), dimensions)
 
 		// 成功/失敗メトリクスの追加
 		if err != nil && *err != nil {
@@ -115,37 +109,77 @@ func (m *MetricsMiddleware) StartTiming(ctx context.Context) func(context.Contex
 			// 成功メトリクス
 			m.metricsService.AddMetric(ctx, "Successful", 1.0, dimensions)
 		}
+	}
+}
 
-		// レスポンスのステータスコードに基づくメトリクス（APIGatewayProxyResponseの場合）
-		if resp, ok := result.(*events.APIGatewayProxyResponse); ok && resp != nil {
-			statusCodeCategory := "2xx"
-			if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-				statusCodeCategory = "4xx"
-				m.metricsService.AddMetric(ctx, "ClientErrors", 1.0, dimensions)
-			} else if resp.StatusCode >= 500 {
-				statusCodeCategory = "5xx"
-				m.metricsService.AddMetric(ctx, "ServerErrors", 1.0, dimensions)
-			}
+// StartTiming は処理時間計測を開始し、終了関数を返す
+func (m *MetricsMiddleware) StartTiming(ctx context.Context) func(context.Context, interface{}, *error) {
+	// メトリクスサービスがない場合は空関数を返す
+	if m.metricsService == nil {
+		return func(ctx context.Context, result interface{}, err *error) {}
+	}
 
-			// HTTPステータスコード別メトリクス
-			m.metricsService.AddMetric(ctx, statusCodeCategory, 1.0, dimensions)
+	// 標準ディメンション
+	dimensions := m.createStandardDimensions()
+
+	// 基本計測の開始
+	startTime, baseMetricsFunc := m.baseTimingMetrics(ctx, dimensions)
+
+	// 終了関数を返す
+	return func(ctx context.Context, result interface{}, err *error) {
+		// 処理時間を計算
+		duration := time.Since(startTime)
+
+		// 基本メトリクスを記録
+		baseMetricsFunc(duration, err)
+
+		// API Gateway固有のメトリクス
+		m.recordAPIGatewayMetrics(ctx, dimensions, result)
+
+		// ユーザー情報に基づくメトリクス
+		m.recordUserMetrics(ctx)
+	}
+}
+
+// レスポンスのステータスコードに基づくメトリクスを記録
+func (m *MetricsMiddleware) recordAPIGatewayMetrics(ctx context.Context, dimensions []*cloudwatch.Dimension, result interface{}) {
+	if m.metricsService == nil {
+		return
+	}
+
+	// レスポンスのステータスコードに基づくメトリクス（APIGatewayProxyResponseの場合）
+	if resp, ok := result.(*events.APIGatewayProxyResponse); ok && resp != nil {
+		statusCodeCategory := "2xx"
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			statusCodeCategory = "4xx"
+			m.metricsService.AddMetric(ctx, "ClientErrors", 1.0, dimensions)
+		} else if resp.StatusCode >= 500 {
+			statusCodeCategory = "5xx"
+			m.metricsService.AddMetric(ctx, "ServerErrors", 1.0, dimensions)
 		}
 
-		// ユーザー情報があればユーザー別メトリクスを追加
-		user, _ := contextutil.GetUserInfo(ctx)
-		if user != nil {
-			// ユーザー別メトリクス
-			userDimensions := m.createUserDimensions(user.ID.String())
-			m.metricsService.AddMetric(ctx, "UserRequests", 1.0, userDimensions)
-		}
+		// HTTPステータスコード別メトリクス
+		m.metricsService.AddMetric(ctx, statusCodeCategory, 1.0, dimensions)
+	}
+}
+
+// ユーザー情報に基づくメトリクスを記録
+func (m *MetricsMiddleware) recordUserMetrics(ctx context.Context) {
+	if m.metricsService == nil {
+		return
+	}
+
+	// ユーザー情報があればユーザー別メトリクスを追加
+	user, _ := contextutil.GetUserInfo(ctx)
+	if user != nil {
+		// ユーザー別メトリクス
+		userDimensions := m.createUserDimensions(user.ID.String())
+		m.metricsService.AddMetric(ctx, "UserRequests", 1.0, userDimensions)
 	}
 }
 
 // StartTimingForThumbnail はサムネイル処理用の処理時間計測を開始し、終了関数を返す
 func (m *MetricsMiddleware) StartTimingForThumbnail(ctx context.Context, s3Event events.S3Event) func(context.Context, *error) {
-	// 処理開始時間を記録
-	startTime := time.Now()
-
 	// メトリクスサービスがない場合は空関数を返す
 	if m.metricsService == nil {
 		return func(ctx context.Context, err *error) {}
@@ -163,26 +197,55 @@ func (m *MetricsMiddleware) StartTimingForThumbnail(ctx context.Context, s3Event
 	// 処理する画像数メトリクス
 	m.metricsService.AddMetric(ctx, "ProcessedImagesCount", float64(imageCount), dimensions)
 
+	// 基本計測の開始
+	startTime, baseMetricsFunc := m.baseTimingMetrics(ctx, dimensions)
+
 	// 終了関数を返す
 	return func(ctx context.Context, err *error) {
 		// 処理時間を計算
 		duration := time.Since(startTime)
 
-		// 処理時間メトリクスを追加
-		m.metricsService.AddMetric(ctx, "ProcessingTime", float64(duration.Milliseconds()), dimensions)
-
-		// エラーがあれば記録
-		if err != nil && *err != nil {
-			m.metricsService.AddMetric(ctx, "Errors", 1.0, dimensions)
-		} else {
-			m.metricsService.AddMetric(ctx, "Successful", 1.0, dimensions)
-		}
+		// 基本メトリクスを記録
+		baseMetricsFunc(duration, err)
 
 		// 平均処理時間（1画像あたり）
 		if imageCount > 0 {
 			m.metricsService.AddMetric(ctx, "AverageImageProcessingTime",
 				float64(duration.Milliseconds())/float64(imageCount), dimensions)
 		}
+	}
+}
+
+// StartTimingForCloudWatchEvent はCloudWatchイベント処理用の処理時間計測を開始し、終了関数を返す
+func (m *MetricsMiddleware) StartTimingForCloudWatchEvent(ctx context.Context, event events.CloudWatchEvent) func(context.Context, *error) {
+	// メトリクスサービスがない場合は空関数を返す
+	if m.metricsService == nil {
+		return func(ctx context.Context, err *error) {}
+	}
+
+	// 標準ディメンション
+	dimensions := m.createStandardDimensions()
+
+	// イベントソース情報を追加
+	sourceDimension := &cloudwatch.Dimension{
+		Name:  aws.String("EventSource"),
+		Value: aws.String(event.Source),
+	}
+	dimensions = append(dimensions, sourceDimension)
+
+	// イベント数メトリクスを追加
+	m.metricsService.AddMetric(ctx, "Invocations", 1.0, dimensions)
+
+	// 基本計測の開始
+	startTime, baseMetricsFunc := m.baseTimingMetrics(ctx, dimensions)
+
+	// 終了関数を返す
+	return func(ctx context.Context, err *error) {
+		// 処理時間を計算
+		duration := time.Since(startTime)
+
+		// 基本メトリクスを記録
+		baseMetricsFunc(duration, err)
 	}
 }
 

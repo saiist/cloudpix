@@ -99,3 +99,9 @@ variable "api_5xx_error_threshold" {
   type        = number
   default     = 5
 }
+
+variable "image_retention_days" {
+  description = "画像の保持日数"
+  type        = number
+  default     = 10
+}

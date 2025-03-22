@@ -159,10 +159,20 @@ func (r *DynamoDBImageRepository) Find(ctx context.Context, options repository.I
 	var filterBuilder expression.ConditionBuilder
 	var filterSet bool
 
+	// デフォルトではアーカイブされていない画像のみを返す
+	filterBuilder = expression.Name("ImageStatus").AttributeNotExists().
+		Or(expression.Name("ImageStatus").NotEqual(expression.Value("ARCHIVED")))
+	filterSet = true
+
 	// 日付フィルター
-	if options.UploadDate != "" {
-		filterBuilder = expression.Name("UploadDate").Equal(expression.Value(options.UploadDate))
-		filterSet = true
+	if options.UploadDateBefore != "" {
+		dateFilter := expression.Name("UploadDate").LessThanEqual(expression.Value(options.UploadDate))
+		if filterSet {
+			filterBuilder = filterBuilder.And(dateFilter)
+		} else {
+			filterBuilder = dateFilter
+			filterSet = true
+		}
 	}
 
 	// スキャン入力の作成

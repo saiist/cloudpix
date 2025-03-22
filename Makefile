@@ -104,6 +104,15 @@ update-tags-code:
 	  --function-name cloudpix-tags \
 	  --image-uri $(ECR_REPO):latest
 
+# サムネイル生成コードの更新
+update-cleanup-code:
+	$(eval ECR_REPO := $(call tf_output,ecr_cleanup_repository_url))
+	@echo "クリーンアップコードを更新しています..."
+	@./build_and_push.sh $(ECR_REPO) ./cmd/cleanup/main.go
+	@aws lambda update-function-code \
+	  --function-name cloudpix-cleanup \
+	  --image-uri $(ECR_REPO):latest
+
 ## -- テスト用コマンド群 --  ##
 
 # 共有の認証トークン取得関数
@@ -237,6 +246,118 @@ api-test-search-by-tag:
 	echo "タグ: $$TAG による画像検索結果:" && \
 	curl -s -X GET "$(LIST_API_URL)?tag=$$TAG" \
 	  -H "Authorization: Bearer $$AUTH_TOKEN" | jq .
+
+# テストデータのセットアップ
+api-setup-cleanup-test:
+	@echo "テスト用画像データをセットアップしています..."
+	@# テスト用の画像をアップロード
+	@echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" > /tmp/test_base64.txt
+	
+	@# 認証トークン取得
+	$(call get_auth_token)
+	
+	@echo "テスト用画像1（現在の日付）をアップロードしています..."
+	$(eval API_URL := $(call tf_output,api_url))
+	$(eval UPLOAD1_RESPONSE := $(shell . /tmp/auth_env.sh && curl -s -X POST $(API_URL) \
+	  -H "Content-Type: application/json" \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" \
+	  -d "{\"fileName\":\"cleanup-test-current.png\",\"contentType\":\"image/png\",\"data\":\"`cat /tmp/test_base64.txt`\"}"))
+	
+	$(eval IMAGE_ID1 := $(shell echo '$(UPLOAD1_RESPONSE)' | jq -r '.imageId'))
+	@echo "画像1 ID: $(IMAGE_ID1)"
+	
+	@echo "テスト用画像2（91日前の日付）をアップロードしています..."
+	$(eval UPLOAD2_RESPONSE := $(shell . /tmp/auth_env.sh && curl -s -X POST $(API_URL) \
+	  -H "Content-Type: application/json" \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" \
+	  -d "{\"fileName\":\"cleanup-test-old.png\",\"contentType\":\"image/png\",\"data\":\"`cat /tmp/test_base64.txt`\"}"))
+	
+	$(eval IMAGE_ID2 := $(shell echo '$(UPLOAD2_RESPONSE)' | jq -r '.imageId'))
+	@echo "画像2 ID: $(IMAGE_ID2)"
+	
+	@# 2つ目の画像のメタデータを91日前の日付に更新
+	@echo "画像2のメタデータを古い日付に更新します (ID: $(IMAGE_ID2))..."
+	$(eval OLD_DATE := $(shell date -d "91 days ago" +%Y-%m-%d))
+	@aws dynamodb update-item \
+	  --table-name $(call tf_output,METADATA_TABLE_NAME) \
+	  --key "{\"ImageID\": {\"S\": \"$(IMAGE_ID2)\"}}" \
+	  --update-expression "SET UploadDate = :date" \
+	  --expression-attribute-values "{\":date\": {\"S\": \"$(OLD_DATE)\"}}"
+	
+	@echo "テスト用画像3（120日前の日付）をアップロードしています..."
+	$(eval UPLOAD3_RESPONSE := $(shell . /tmp/auth_env.sh && curl -s -X POST $(API_URL) \
+	  -H "Content-Type: application/json" \
+	  -H "Authorization: Bearer $$AUTH_TOKEN" \
+	  -d "{\"fileName\":\"cleanup-test-very-old.png\",\"contentType\":\"image/png\",\"data\":\"`cat /tmp/test_base64.txt`\"}"))
+	
+	$(eval IMAGE_ID3 := $(shell echo '$(UPLOAD3_RESPONSE)' | jq -r '.imageId'))
+	@echo "画像3 ID: $(IMAGE_ID3)"
+	
+	@echo "画像3のメタデータをより古い日付に更新します (ID: $(IMAGE_ID3))..."
+	$(eval VERY_OLD_DATE := $(shell date -d "120 days ago" +%Y-%m-%d))
+	@aws dynamodb update-item \
+	  --table-name $(call tf_output,METADATA_TABLE_NAME) \
+	  --key "{\"ImageID\": {\"S\": \"$(IMAGE_ID3)\"}}" \
+	  --update-expression "SET UploadDate = :date" \
+	  --expression-attribute-values "{\":date\": {\"S\": \"$(VERY_OLD_DATE)\"}}"
+	
+	@# 後続のテストで使用するために画像IDをファイルに保存
+	@echo "$(IMAGE_ID1)" > /tmp/cleanup_test_id1.txt
+	@echo "$(IMAGE_ID2)" > /tmp/cleanup_test_id2.txt
+	@echo "$(IMAGE_ID3)" > /tmp/cleanup_test_id3.txt
+	
+	@echo "セットアップ完了: テスト用の画像が準備されました"
+	@echo "画像1 ID (現在日付): $(IMAGE_ID1)"
+	@echo "画像2 ID ($(OLD_DATE)): $(IMAGE_ID2)"
+	@echo "画像3 ID ($(VERY_OLD_DATE)): $(IMAGE_ID3)"
+	@echo "これらのIDを使用してCleanupのテストを実行できます"
+
+# クリーンアップ関数のテスト実行
+api-run-cleanup-test:
+	@echo "Cleanup Lambda関数を実行しています (保持期間: 90日)..."
+	@aws lambda invoke \
+	  --function-name cloudpix-cleanup \
+	  --invocation-type RequestResponse \
+	  --cli-binary-format raw-in-base64-out \
+	  --payload '{"retentionDays": 90, "testMode": true}' \
+	  /tmp/cleanup-response.json
+	@cat /tmp/cleanup-response.json
+	@echo "\n実行が完了しました"
+
+# クリーンアップ結果の検証
+api-verify-cleanup-test:
+	@echo "クリーンアップ結果を検証しています..."
+	
+	@echo "画像1（現在の日付）のステータスを確認..."
+	$(eval IMAGE_ID1 := $(shell cat /tmp/cleanup_test_id1.txt))
+	@aws dynamodb get-item \
+	  --table-name $(call tf_output,METADATA_TABLE_NAME) \
+	  --key "{\"ImageID\": {\"S\": \"$(IMAGE_ID1)\"}}" \
+	  --projection-expression "ImageID, UploadDate, ImageStatus, S3ObjectKey" | jq .
+	
+	@echo "画像2（91日前）のステータスを確認..."
+	$(eval IMAGE_ID2 := $(shell cat /tmp/cleanup_test_id2.txt))
+	@aws dynamodb get-item \
+	  --table-name $(call tf_output,METADATA_TABLE_NAME) \
+	  --key "{\"ImageID\": {\"S\": \"$(IMAGE_ID2)\"}}" \
+	  --projection-expression "ImageID, UploadDate, ImageStatus, S3ObjectKey" | jq .
+	
+	@echo "画像3（120日前）のステータスを確認..."
+	$(eval IMAGE_ID3 := $(shell cat /tmp/cleanup_test_id3.txt))
+	@aws dynamodb get-item \
+	  --table-name $(call tf_output,METADATA_TABLE_NAME) \
+	  --key "{\"ImageID\": {\"S\": \"$(IMAGE_ID3)\"}}" \
+	  --projection-expression "ImageID, UploadDate, ImageStatus, S3ObjectKey" | jq .
+
+# クリーンアップ手動実行
+api-run-cleanup:
+	@aws lambda invoke \
+	  --function-name cloudpix-cleanup \
+	  --invocation-type RequestResponse \
+	  --cli-binary-format raw-in-base64-out \
+	  --payload '{}' \
+	  /tmp/cleanup-response.json
+	@cat /tmp/cleanup-response.json
 
 ## -- Goテスト関連コマンド -- ##
 

@@ -33,4 +33,13 @@ locals {
     USER_POOL_ID        = aws_cognito_user_pool.cloudpix_users.id
     USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.cloudpix_client.id
   })
+
+  cleanup_lambda_env_vars = merge(local.common_lambda_env_vars, {
+    S3_BUCKET_NAME      = aws_s3_bucket.cloudpix_images.bucket
+    METADATA_TABLE_NAME = aws_dynamodb_table.cloudpix_metadata.name
+    TAGS_TABLE_NAME     = aws_dynamodb_table.cloudpix_tags.name
+    RETENTION_DAYS     = var.image_retention_days
+  })
+
+
 }

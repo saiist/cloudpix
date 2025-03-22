@@ -2,15 +2,15 @@ package main
 
 import (
 	"cloudpix/config"
-	s3handler "cloudpix/internal/adapter/event/s3"
+	scheduler_handler "cloudpix/internal/adapter/event/scheduler"
 	"cloudpix/internal/adapter/middleware"
-	"cloudpix/internal/application/thumbnailmanagement/usecase"
+	"cloudpix/internal/application/imagemanagement/usecase"
 	"cloudpix/internal/domain/shared/event/dispatcher"
-	"cloudpix/internal/infrastructure/imaging"
-	"cloudpix/internal/infrastructure/persistence/dynamodb/thumbnailmanagement"
-	s3storage "cloudpix/internal/infrastructure/storage/s3"
+	"cloudpix/internal/infrastructure/cleanup"
+	"cloudpix/internal/infrastructure/persistence/dynamodb/imagemanagement"
+	"cloudpix/internal/infrastructure/persistence/dynamodb/tagmanagement"
+	storageS3 "cloudpix/internal/infrastructure/storage/s3"
 	"cloudpix/internal/logging"
-	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -19,28 +19,21 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-// サムネイルサイズ（ピクセル）
-const thumbnailSize = 200
-
 func main() {
-	// 環境変数の設定（必要に応じて）
-	if os.Getenv("ENVIRONMENT") == "dev" {
-		os.Setenv("LOG_LEVEL", "debug")
-	}
-
 	// ロギングの初期化
 	logging.InitLogging()
-	logger := logging.GetLogger("ThumbnailLambda")
+	logger := logging.GetLogger("CleanupLambda")
 
 	// 設定の読み込み
 	cfg := config.NewConfig()
-	logger.Info("Starting Thumbnail Lambda", map[string]interface{}{
+
+	logger.Info("Starting Cleanup Lambda", map[string]interface{}{
 		"config": map[string]string{
 			"bucketName":    cfg.S3BucketName,
 			"metadataTable": cfg.MetadataTableName,
-			"environment":   cfg.Environment,
+			"tagsTable":     cfg.TagsTableName,
 		},
-		"thumbnailSize": thumbnailSize,
+		"retentionDays": cfg.ImageRetentionDays,
 	})
 
 	// AWS セッションの初期化
@@ -51,7 +44,7 @@ func main() {
 		logger.Fatal(err, "Error creating AWS session", nil)
 	}
 
-	// S3とDynamoDBクライアントの初期化
+	// クライアントの初期化
 	s3Client := s3.New(sess)
 	dbClient := dynamodb.New(sess)
 	logger.Info("DynamoDB client initialized", map[string]interface{}{
@@ -59,33 +52,34 @@ func main() {
 	})
 
 	// インフラストラクチャレイヤーのセットアップ
-	thumbnailRepo := thumbnailmanagement.NewDynamoDBThumbnailRepository(dbClient, cfg.MetadataTableName)
-	storageService := s3storage.NewS3ThumbnailStorageService(s3Client, cfg.AWSRegion)
-	processingService := imaging.NewImageProcessingService()
+	imageRepo := imagemanagement.NewDynamoDBImageRepository(dbClient, cfg.MetadataTableName)
+	tagRepo := tagmanagement.NewDynamoDBTagRepository(dbClient, cfg.TagsTableName, cfg.MetadataTableName)
+	storageService := storageS3.NewS3StorageService(s3Client, cfg.AWSRegion)
+	cleanupService := cleanup.NewS3CleanupService(s3Client, dbClient, cfg.S3BucketName, cfg.MetadataTableName, cfg.TagsTableName)
 	eventDispatcher := dispatcher.NewSimpleEventDispatcher()
 
 	// アプリケーションレイヤーのセットアップ
-	thumbnailUsecase := usecase.NewThumbnailGenerationUsecase(
-		thumbnailRepo,
+	cleanupUsecase := usecase.NewCleanupUsecase(
+		imageRepo,
+		tagRepo,
 		storageService,
-		processingService,
+		cleanupService,
 		eventDispatcher,
-		thumbnailSize,
-		cfg.AWSRegion,
+		cfg.ImageRetentionDays,
+		logger,
 	)
 
-	// インターフェースレイヤーのセットアップ
-	// S3イベント用のハンドラー
-	thumbnailHandler := s3handler.NewThumbnailHandler(thumbnailUsecase, logger)
+	// ハンドラーのセットアップ
+	cleanupHandler := scheduler_handler.NewCleanupHandler(cleanupUsecase, logger)
 
 	// ミドルウェア設定の作成
 	middlewareCfg := middleware.NewDefaultMiddlewareConfig()
 	middlewareCfg.AWSRegion = cfg.AWSRegion
 	middlewareCfg.ServiceName = "CloudPix"
-	middlewareCfg.OperationName = "GenerateThumbnail"
-	middlewareCfg.FunctionName = "ThumbnailLambda"
+	middlewareCfg.OperationName = "CleanupProcess"
+	middlewareCfg.FunctionName = "CleanupLambda"
 
-	// 認証は不要（S3イベント起動のため）
+	// 認証は不要（スケジュールタスクのため）
 	middlewareCfg.AuthEnabled = false
 
 	// ミドルウェアレジストリの取得
@@ -94,12 +88,11 @@ func main() {
 	// 標準ミドルウェアを登録（認証なし）
 	registry.RegisterStandardMiddlewares(sess, middlewareCfg, nil, logger)
 
-	// S3イベント用のミドルウェア処理
-	// ここではS3イベント用のカスタムアダプターが必要
+	// イベント用のミドルウェア処理
 	handlerFactory := middleware.NewHandlerFactory(middlewareCfg).WithAWSSession(sess)
 
-	// ミドルウェアを適用したS3イベントハンドラーを作成
-	wrappedHandler := handlerFactory.WrapS3EventHandler(thumbnailHandler.Handle)
+	// ミドルウェアを適用したスケジュールイベントハンドラーを作成
+	wrappedHandler := handlerFactory.WrapCloudWatchEventHandler(cleanupHandler.Handle)
 
 	// Lambda関数のスタート
 	lambda.Start(wrappedHandler)

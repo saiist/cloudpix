@@ -88,3 +88,42 @@ func withMetricsForThumbnail(metricsMiddleware *MetricsMiddleware,
 		return err
 	}
 }
+
+// WrapCloudWatchEventHandler はCloudWatchイベントハンドラーにミドルウェアを適用する
+func (f *HandlerFactory) WrapCloudWatchEventHandler(handler func(context.Context, events.CloudWatchEvent) error) func(context.Context, events.CloudWatchEvent) error {
+	// メトリクスミドルウェアを使用
+	if f.config.MetricsEnabled {
+		sess := f.getOrCreateAWSSession()
+		if sess != nil {
+			metricsMiddleware := NewMetricsMiddleware(
+				sess,
+				f.config.ServiceName,
+				f.config.OperationName,
+				f.config.FunctionName,
+				f.config.GetMetricsConfig(),
+			)
+
+			return withMetricsForCloudWatchEvent(metricsMiddleware, handler)
+		}
+	}
+
+	// ミドルウェアを適用できない場合は元のハンドラーをそのまま返す
+	return handler
+}
+
+// withMetricsForCloudWatchEvent はメトリクス収集ミドルウェアをCloudWatchイベントハンドラーに適用する
+func withMetricsForCloudWatchEvent(metricsMiddleware *MetricsMiddleware,
+	handler func(ctx context.Context, event events.CloudWatchEvent) error) func(ctx context.Context, event events.CloudWatchEvent) error {
+
+	return func(ctx context.Context, event events.CloudWatchEvent) error {
+		// エラーを格納する変数
+		var err error
+
+		// 処理時間計測を開始し、完了時に計測を終了する
+		defer metricsMiddleware.StartTimingForCloudWatchEvent(ctx, event)(ctx, &err)
+
+		// ハンドラー実行
+		err = handler(ctx, event)
+		return err
+	}
+}

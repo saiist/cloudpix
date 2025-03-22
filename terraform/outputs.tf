@@ -41,6 +41,11 @@ output "ecr_tags_repository_url" {
   description = "ECRリポジトリのURL（タグ管理用）"
 }
 
+output "ecr_cleanup_repository_url" {
+  value       = aws_ecr_repository.cloudpix_cleanup.repository_url
+  description = "ECRリポジトリのURL（クリーンアップ用）"
+}
+
 output "tags_api_url" {
   value       = "${aws_api_gateway_stage.dev.invoke_url}/tags"
   description = "タグ管理APIのエンドポイントURL"

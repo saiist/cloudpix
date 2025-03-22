@@ -8,7 +8,7 @@ import (
 	"cloudpix/internal/application/imagemanagement/usecase"
 	"cloudpix/internal/domain/shared/event/dispatcher"
 	"cloudpix/internal/infrastructure/persistence/dynamodb/imagemanagement"
-	internal_s3 "cloudpix/internal/infrastructure/storage/s3"
+	storageS3 "cloudpix/internal/infrastructure/storage/s3"
 	"cloudpix/internal/logging"
 	"os"
 
@@ -56,7 +56,7 @@ func main() {
 
 	// インフラストラクチャレイヤーのセットアップ
 	imageRepo := imagemanagement.NewDynamoDBImageRepository(dbClient, cfg.MetadataTableName)
-	storageService := internal_s3.NewS3StorageService(s3Client, cfg.AWSRegion)
+	storageService := storageS3.NewS3StorageService(s3Client, cfg.AWSRegion)
 	eventDispatcher := dispatcher.NewSimpleEventDispatcher()
 
 	// アプリケーションレイヤーのセットアップ
