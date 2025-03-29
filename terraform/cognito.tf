@@ -2,57 +2,25 @@
 # Cognito User Pool
 ################################
 resource "aws_cognito_user_pool" "cloudpix_users" {
-  name                     = "${var.app_name}-users"
-  deletion_protection      = "ACTIVE"
-  user_pool_tier           = "ESSENTIALS"
+  name = "${var.app_name}-users"
+
+  # ユーザー名属性の設定
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
   # パスワードポリシー
   password_policy {
-    minimum_length                   = 8
-    require_lowercase                = true
-    require_numbers                  = true
-    require_symbols                  = true
-    require_uppercase                = true
-    temporary_password_validity_days = 7
-    password_history_size            = 0
+    minimum_length    = 8
+    require_lowercase = true
+    require_numbers   = true
+    require_symbols   = true
+    require_uppercase = true
   }
 
   # メール設定
   email_configuration {
     email_sending_account = "COGNITO_DEFAULT"
   }
-
-  # アカウント回復設定
-  account_recovery_setting {
-    recovery_mechanism {
-      name     = "verified_email"
-      priority = 1
-    }
-    recovery_mechanism {
-      name     = "verified_phone_number"
-      priority = 2
-    }
-  }
-
-  # 管理者作成設定
-  admin_create_user_config {
-    allow_admin_create_user_only = false
-  }
-
-  # ユーザーネーム設定
-  username_configuration {
-    case_sensitive = false
-  }
-
-  # サインインポリシー
-  sign_in_policy {
-    allowed_first_auth_factors = ["PASSWORD"]
-  }
-
-  # MFA設定
-  mfa_configuration = "OFF"
 
   # メール検証設定
   verification_message_template {
@@ -61,7 +29,7 @@ resource "aws_cognito_user_pool" "cloudpix_users" {
     email_message        = "${title(var.app_name)}へようこそ！確認コード: {####}"
   }
 
-  # ユーザー属性スキーマ - emailはAWSが自動作成
+  # ユーザー属性スキーマ
   schema {
     name                = "name"
     attribute_data_type = "String"
@@ -123,12 +91,12 @@ resource "aws_cognito_user_pool_client" "cloudpix_client" {
   user_pool_id = aws_cognito_user_pool.cloudpix_users.id
 
   # トークン設定
-  access_token_validity  = 60
-  id_token_validity      = 60
-  refresh_token_validity = 5
+  refresh_token_validity = 30
+  access_token_validity  = 1
+  id_token_validity      = 1
   token_validity_units {
-    access_token  = "minutes"
-    id_token      = "minutes"
+    access_token  = "hours"
+    id_token      = "hours"
     refresh_token = "days"
   }
 
@@ -136,17 +104,16 @@ resource "aws_cognito_user_pool_client" "cloudpix_client" {
   explicit_auth_flows = [
     "ALLOW_USER_SRP_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
-    "ALLOW_USER_AUTH"
+    "ALLOW_USER_PASSWORD_AUTH"
   ]
 
-  # コールバックURL設定
-  callback_urls        = ["${var.app_frontend_url}/callback"]
+  # コールバックURL設定 - code/implicit フローには必須
+  callback_urls        = ["${var.app_frontend_url}/callback", "${var.app_frontend_url}/auth"]
   logout_urls          = ["${var.app_frontend_url}/logout"]
   default_redirect_uri = "${var.app_frontend_url}/callback"
 
   # セキュリティ設定
   prevent_user_existence_errors = "ENABLED"
-  auth_session_validity = 3
 
   # OAuthスコープ設定
   allowed_oauth_flows = ["code", "implicit"]
@@ -159,14 +126,8 @@ resource "aws_cognito_user_pool_client" "cloudpix_client" {
   ]
   allowed_oauth_flows_user_pool_client = true
 
-  # アイデンティティプロバイダー
-  supported_identity_providers = ["COGNITO"]
-
-  # シークレット生成（ホストされたUI機能に必要）
-  generate_secret = true
-  
-  # トークン取り消し
-  enable_token_revocation = true
+  # シークレット生成（サーバーサイドアプリケーション用）
+  generate_secret = false
 }
 
 ################################
